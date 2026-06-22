@@ -171,7 +171,10 @@ def make_backup(source_dir: str, dry_run: bool = False) -> Optional[Path]:
         if path.exists():
             dest = BACKUP_DIR / path.relative_to(USER_HOME) if str(path).startswith(USER_HOME) else BACKUP_DIR / path.name
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(str(path), str(dest), symlinks=True, dirs_exist_ok=True)
+            if path.is_dir():
+                shutil.copytree(str(path), str(dest), symlinks=True, dirs_exist_ok=True)
+            else:
+                shutil.copy2(str(path), str(dest))
             log.info(f"  Backed up: {path}")
     return BACKUP_DIR
 
