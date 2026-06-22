@@ -33,10 +33,10 @@ if command -v gnome-keyring-daemon &>/dev/null; then
 fi
 
 # ── Polkit Agent ──────────────────────────────────────────────────────────────
-if command -v /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &>/dev/null; then
-    /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
-elif command -v /usr/lib/polkit-gnome-authentication-agent-1 &>/dev/null; then
-    /usr/lib/polkit-gnome-authentication-agent-1 &
+if command -v /usr/lib/polkit-kde-authentication-agent-1 &>/dev/null; then
+    /usr/lib/polkit-kde-authentication-agent-1 &
+elif command -v /usr/libexec/polkit-gnome-authentication-agent-1 &>/dev/null; then
+    /usr/libexec/polkit-gnome-authentication-agent-1 &
 fi
 
 # ── Clipboard Manager ─────────────────────────────────────────────────────────
@@ -61,4 +61,4 @@ if command -v systemctl &>/dev/null; then
 fi
 
 # ── Start Niri ────────────────────────────────────────────────────────────────
-exec niri-session "$@"
+exec niri "$@"

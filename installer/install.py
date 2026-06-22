@@ -336,6 +336,7 @@ SYSTEM_PACKAGES = {
     "gnome-keyring": "gnome-keyring",
     "libpam-gnome-keyring": "libpam-gnome-keyring",
     "accounts-daemon": "accountsservice",
+    "polkit-kde-agent": "polkit-kde-agent-1",
 
     # Portal
     "xdg-desktop-portal": "xdg-desktop-portal",
@@ -603,17 +604,34 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
         except Exception as e:
             log.error(f"Failed to install Niri from cargo: {e}")
             # Alternative: try the Debian backports or prebuilt
-            log.info("Trying to install Niri via Debian experimental...")
-            run(["apt-get", "install", "-t", "experimental", "-y", "niri"], check=False)
+            log.info("Trying to install Niri via Debian backports...")
+            run(["apt-get", "install", "-t", "trixie-backports", "-y", "niri"], check=False)
 
-    # Walker launcher
+    # Walker launcher (Rust/Tauri project, NOT Go)
     log.info("Installing Walker launcher...")
     if not dry_run and not shutil.which("walker"):
         try:
-            # Walker is a Go project
-            run(["go", "install", "github.com/abenz1267/walker@latest"], check=False)
+            if shutil.which("cargo"):
+                # Build and install from git with cargo
+                walker_build_dir = Path("/tmp/nixdots-source-builds/walker")
+                run(["git", "clone", "--depth", "1",
+                     "https://github.com/abenz1267/walker.git",
+                     str(walker_build_dir)], check=False)
+                if walker_build_dir.exists():
+                    run(["cargo", "build", "--release"], cwd=str(walker_build_dir), check=False)
+                    run(["cp", str(walker_build_dir / "target/release/walker"), "/usr/local/bin/"], check=False)
+            else:
+                log.warning("Cargo not found: cannot build walker")
         except Exception as e:
             log.error(f"Failed to install Walker: {e}")
+
+    # Elephant (Go-based data provider for Walker)
+    log.info("Installing Elephant data provider...")
+    if not dry_run and not shutil.which("elephant"):
+        try:
+            run(["go", "install", "github.com/abenz1267/elephant@latest"], check=False)
+        except Exception as e:
+            log.error(f"Failed to install Elephant: {e}")
 
     # Rofi (ensure it's installed)
     if not dry_run and not shutil.which("rofi"):
@@ -621,7 +639,7 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
             run(["apt-get", "install", "-y", "rofi"], check=False)
         except Exception:
             log.warning("Rofi not found in repos; trying backports")
-            run(["apt-get", "install", "-t", "bookworm-backports", "-y", "rofi"], check=False)
+            run(["apt-get", "install", "-t", "trixie-backports", "-y", "rofi"], check=False)
 
     # Eww
     log.info("Installing Eww...")
@@ -641,14 +659,6 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
             run(["apt-get", "install", "-f", "-y"])
         except Exception as e:
             log.error(f"Failed to install Chrome Canary: {e}")
-
-    # Walker launcher (Go)
-    log.info("Installing Walker launcher + Elephant...")
-    if not dry_run:
-        if not shutil.which("walker"):
-            run(["go", "install", "github.com/abenz1267/walker@latest"], check=False)
-        if not shutil.which("elephant"):
-            run(["go", "install", "github.com/abenz1267/elephant@latest"], check=False)
 
     # Cider (Apple Music client)
     log.info("Installing Cider...")
@@ -737,7 +747,6 @@ def stage_5_setup_services(dry_run: bool = False) -> None:
         "accounts-daemon",
         "libvirtd",
         "virtlogd",
-        "zramswap",
     ]
 
     for svc in services:
@@ -1026,7 +1035,7 @@ def stage_7_install_user_configs(dry_run: bool = False) -> None:
     # ── Helper scripts ──────────────────────────────────────────────────────
     # xfreerdp3 wrapper
     xfreerdp3_sh = bin_target / "xfreerdp3"
-    xfreerdp3_sh.write_text('#!/bin/bash\nexec freerdp "$@"\n')
+    xfreerdp3_sh.write_text('#!/bin/bash\nexec freerdp3 "$@"\n')
     xfreerdp3_sh.chmod(0o755)
 
     # mic_toggle wrapper
@@ -1112,32 +1121,38 @@ def stage_7_install_user_configs(dry_run: bool = False) -> None:
     walker_unit_dir = config_target / "systemd" / "user"
     walker_unit_dir.mkdir(parents=True, exist_ok=True)
     walker_service = walker_unit_dir / "walker.service"
-    walker_service.write_text(
-        '[Unit]\n'
-        'Description=Walker launcher service\n'
-        'PartOf=graphical-session.target\n'
-        'After=graphical-session.target\n'
-        '[Service]\n'
-        'ExecStart=walker --gapplication-service\n'
-        'Restart=on-failure\n'
-        'RestartSec=3\n'
-        '[Install]\n'
-        'WantedBy=graphical-session.target\n'
-    )
+    if shutil.which("walker"):
+        walker_service.write_text(
+            '[Unit]\n'
+            'Description=Walker launcher service\n'
+            'PartOf=graphical-session.target\n'
+            'After=graphical-session.target\n'
+            '[Service]\n'
+            'ExecStart=walker --gapplication-service\n'
+            'Restart=on-failure\n'
+            'RestartSec=3\n'
+            '[Install]\n'
+            'WantedBy=graphical-session.target\n'
+        )
+    else:
+        log.warning("  Walker not installed; skipping walker.service")
     elephant_service = walker_unit_dir / "elephant.service"
-    elephant_service.write_text(
-        '[Unit]\n'
-        'Description=Elephant data provider service\n'
-        'PartOf=graphical-session.target\n'
-        'After=graphical-session.target\n'
-        'Before=walker.service\n'
-        '[Service]\n'
-        'ExecStart=elephant\n'
-        'Restart=on-failure\n'
-        'RestartSec=3\n'
-        '[Install]\n'
-        'WantedBy=graphical-session.target\n'
-    )
+    if shutil.which("elephant"):
+        elephant_service.write_text(
+            '[Unit]\n'
+            'Description=Elephant data provider service\n'
+            'PartOf=graphical-session.target\n'
+            'After=graphical-session.target\n'
+            'Before=walker.service\n'
+            '[Service]\n'
+            'ExecStart=elephant\n'
+            'Restart=on-failure\n'
+            'RestartSec=3\n'
+            '[Install]\n'
+            'WantedBy=graphical-session.target\n'
+        )
+    else:
+        log.warning("  Elephant not installed; skipping elephant.service")
 
     # ── Niri Config ──────────────────────────────────────────────────────────
     niri_cfg = CONFIG_SRC / "niri" / "config.kdl"
@@ -2008,7 +2023,7 @@ theme=Catppuccin-Mocha
     rofi_config_path = rofi_target / "config.rasi"
     rofi_config_path.write_text(
         'configuration {\n'
-        '    modi: "drun,run,filebrowser,emoji,calc";\n'
+        '    modi: "drun,run";\n'
         '    show-icons: true;\n'
         '    icon-theme: "Papirus-Dark";\n'
         '    display-drun: " Apps";\n'
@@ -2033,6 +2048,14 @@ theme=Catppuccin-Mocha
     # Backup if exists
     if zshrc.exists() and not dry_run:
         shutil.copy2(str(zshrc), str(zshrc) + ".bak")
+
+    # Install Oh My Zsh if not present
+    omz_dir = Path(f"{USER_HOME}/.oh-my-zsh")
+    if not omz_dir.exists() and not dry_run:
+        try:
+            run(["bash", "-c", "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" "--unattended"], check=False)
+        except Exception:
+            log.warning("Failed to install Oh My Zsh; .zshrc will have errors")
 
     zshrc_content = """# ── Nixdots Debian Migration Shell Config ──────────────────────────
 export ZSH="$HOME/.oh-my-zsh"
@@ -2062,11 +2085,6 @@ alias ll="eza -lh --icons=auto"
 alias ff="fastfetch"
 alias clear="clear && printf '\\033c'"
 alias c="claude"
-alias rb="sudo nixos-rebuild switch --flake ~/nixdots#kotlin"
-alias upd="nix flake update ~/nixdots"
-alias upg="sudo nixos-rebuild switch --upgrade --flake ~/nixdots#kotlin"
-alias conf="nvim ~/nixdots/modules/nixos/configuration.nix"
-alias pkgs="nvim ~/nixdots/modules/nixos/packages.nix"
 
 # ── Keybind ────────────────────────────────────────────────────────────────
 KEYTIMEOUT=1
@@ -2294,7 +2312,7 @@ ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::scrolllock", RUN+="/bin/sh -c 'chm
     Path("/var/lib/cloudflared-tunnel").mkdir(parents=True, exist_ok=True)
     run(["chown", "minecraft:minecraft", "/var/lib/minecraft-server"], check=False)
     # Cloudflared
-    run(["apt-get", "install", "-y", "cloudflared"], check=False)
+    apt_install(["cloudflared"], dry_run)
 
     # ── NBFC (NoteBook FanControl) ────────────────────────────────────────────
     nbfc_installed = shutil.which("nbfc_service") is not None
@@ -2308,50 +2326,51 @@ ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::scrolllock", RUN+="/bin/sh -c 'chm
     apt_install(["lact"], dry_run)
     lact_found = is_package_installed("lact")
     if not lact_found:
-        log.warning("lact not found in repos; skipping GPU fan control setup")
-    kernel_param = "amdgpu.ppfeaturemask=0xfffd7fff"
-    current_params = ""
-    try:
-        with open("/etc/default/grub") as f:
-            current_params = f.read()
-        if kernel_param not in current_params:
-            new_params = current_params.replace(
-                'GRUB_CMDLINE_LINUX_DEFAULT="',
-                f'GRUB_CMDLINE_LINUX_DEFAULT="{kernel_param} '
-            )
-            with open("/etc/default/grub", "w") as f:
-                f.write(new_params)
-            run(["update-grub"], check=False)
-    except Exception:
-        log.warning("Could not add GPU fan kernel param; add amdgpu.ppfeaturemask manually")
+        log.warning("lact not found in repos; skipping GPU fan control setup completely")
+    else:
+        kernel_param = "amdgpu.ppfeaturemask=0xfffd7fff"
+        current_params = ""
+        try:
+            with open("/etc/default/grub") as f:
+                current_params = f.read()
+            if kernel_param not in current_params:
+                new_params = current_params.replace(
+                    'GRUB_CMDLINE_LINUX_DEFAULT="',
+                    f'GRUB_CMDLINE_LINUX_DEFAULT="{kernel_param} '
+                )
+                with open("/etc/default/grub", "w") as f:
+                    f.write(new_params)
+                run(["update-grub"], check=False)
+        except Exception:
+            log.warning("Could not add GPU fan kernel param; add amdgpu.ppfeaturemask manually")
 
-    # LACT daemon systemd service
-    lact_config = Path("/etc/lact/config.yaml")
-    lact_config.parent.mkdir(parents=True, exist_ok=True)
-    lact_config.write_text(
-        'version: 5\n'
-        'daemon:\n'
-        '  log_level: info\n'
-        '  admin_groups: []\n'
-        'apply_settings_timer: 5\n'
-        'gpus:\n'
-        '  1002:67DF-1DA2:E366-0000:04:00.0:\n'
-        '    fan_control_enabled: true\n'
-        '    fan_control_settings:\n'
-        '      mode: curve\n'
-        '      static_speed: 0.5\n'
-        '      temperature_key: edge\n'
-        '      interval_ms: 500\n'
-        '      curve:\n'
-        '        30: 0.20\n'
-        '        50: 0.30\n'
-        '        60: 0.40\n'
-        '        70: 0.55\n'
-        '        80: 0.75\n'
-        '        90: 1.00\n'
-    )
-    lact_service = Path("/etc/systemd/system/lact.service")
-    lact_service.write_text('''[Unit]
+        # LACT daemon systemd service
+        lact_config = Path("/etc/lact/config.yaml")
+        lact_config.parent.mkdir(parents=True, exist_ok=True)
+        lact_config.write_text(
+            'version: 5\n'
+            'daemon:\n'
+            '  log_level: info\n'
+            '  admin_groups: []\n'
+            'apply_settings_timer: 5\n'
+            'gpus:\n'
+            '  1002:67DF-1DA2:E366-0000:04:00.0:\n'
+            '    fan_control_enabled: true\n'
+            '    fan_control_settings:\n'
+            '      mode: curve\n'
+            '      static_speed: 0.5\n'
+            '      temperature_key: edge\n'
+            '      interval_ms: 500\n'
+            '      curve:\n'
+            '        30: 0.20\n'
+            '        50: 0.30\n'
+            '        60: 0.40\n'
+            '        70: 0.55\n'
+            '        80: 0.75\n'
+            '        90: 1.00\n'
+        )
+        lact_service = Path("/etc/systemd/system/lact.service")
+        lact_service.write_text('''[Unit]
 Description=LACT GPU fan curve daemon
 After=multi-user.target
 
@@ -2364,9 +2383,10 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target
 ''')
-    run(["systemctl", "enable", "lact"], check=False)
+        run(["systemctl", "enable", "lact"], check=False)
 
     # ── Spice USB Redirection ────────────────────────────────────────────────
+    apt_install(["spice-vdagent"], dry_run)
     spice_udev = Path("/etc/udev/rules.d/90-spice-usb.rules")
     spice_udev.write_text(
         'SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"*\", ATTRS{idProduct}==\"*\", TAG+=\"uaccess\"\n'
