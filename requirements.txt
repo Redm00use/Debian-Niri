@@ -1,0 +1,8 @@
+# Nixdots → Debian Migration Installer Dependencies
+#
+# The installer (installer/install.py) uses only Python standard library modules.
+# This file exists so install.sh can set up a virtual environment deterministically.
+# No third-party packages are required at this time.
+#
+# If future versions add external dependencies (e.g., requests, pyyaml),
+# list them here and install.sh will pick them up automatically via pip.
