@@ -1,0 +1,59 @@
+#!/bin/bash
+# ── Niri Session Launcher ─────────────────────────────────────────────────────
+#
+# This script starts a Niri Wayland session with Noctalia shell and all
+# required services. It mirrors the session startup from the NixOS config.
+#
+# Usage:
+#   niri-session
+
+set -euo pipefail
+
+# ── Environment ───────────────────────────────────────────────────────────────
+export XDG_CURRENT_DESKTOP="niri"
+export XDG_SESSION_DESKTOP="niri"
+export XDG_SESSION_TYPE="wayland"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export QT_QPA_PLATFORM="wayland;xcb"
+export QT_QPA_PLATFORMTHEME="qt5ct"
+export XDG_ICON_THEME="Papirus-Dark"
+export ICON_THEME="Papirus-Dark"
+export QS_ICON_THEME="Papirus-Dark"
+export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR}/keyring/ssh"
+export DISPLAY="${DISPLAY:-:0}"
+
+# ── Session Bus ──────────────────────────────────────────────────────────────
+if command -v dbus-update-activation-environment &>/dev/null; then
+    dbus-update-activation-environment --systemd --all
+fi
+
+# ── GNOME Keyring ────────────────────────────────────────────────────────────
+if command -v gnome-keyring-daemon &>/dev/null; then
+    eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh,gpg)"
+fi
+
+# ── Polkit Agent ──────────────────────────────────────────────────────────────
+if command -v /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &>/dev/null; then
+    /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
+elif command -v /usr/lib/polkit-gnome-authentication-agent-1 &>/dev/null; then
+    /usr/lib/polkit-gnome-authentication-agent-1 &
+fi
+
+# ── Clipboard Manager ─────────────────────────────────────────────────────────
+if command -v cliphist &>/dev/null && command -v wl-paste &>/dev/null; then
+    wl-paste --type text --watch cliphist store 2>/dev/null &
+    wl-paste --type image --watch cliphist store 2>/dev/null &
+fi
+
+# ── XWayland Satellite ───────────────────────────────────────────────────────
+if command -v xwayland-satellite &>/dev/null; then
+    xwayland-satellite &
+fi
+
+# ── Noctalia Shell ────────────────────────────────────────────────────────────
+if command -v noctalia-shell-patched &>/dev/null; then
+    noctalia-shell-patched &
+fi
+
+# ── Start Niri ────────────────────────────────────────────────────────────────
+exec niri-session "$@"

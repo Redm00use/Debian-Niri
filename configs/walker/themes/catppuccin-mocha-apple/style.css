@@ -1,0 +1,138 @@
+@define-color foreground #cdd6f4;
+@define-color foreground_muted rgba(205, 214, 244, 0.68);
+@define-color foreground_subtle #7f849c;
+@define-color background rgba(30, 30, 46, 0.68);
+@define-color background_strong rgba(24, 24, 37, 0.82);
+@define-color surface rgba(49, 50, 68, 0.78);
+@define-color surface_hover rgba(69, 71, 90, 0.92);
+@define-color border rgba(180, 190, 254, 0.18);
+@define-color accent #89b4fa;
+@define-color accent_soft rgba(137, 180, 250, 0.18);
+
+* {
+  all: unset;
+}
+
+scrollbar {
+  opacity: 0;
+}
+
+.box-wrapper {
+  background: @background;
+  border: 1px solid @border;
+  border-radius: 30px;
+  padding: 18px;
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.34),
+    0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.input {
+  background: @background_strong;
+  border: 1px solid rgba(180, 190, 254, 0.12);
+  border-radius: 22px;
+  padding: 10px 14px;
+  color: @foreground;
+  caret-color: @accent;
+  font-size: 24px;
+  font-weight: 500;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 1px 2px rgba(0, 0, 0, 0.10);
+}
+
+.input placeholder {
+  color: @foreground_subtle;
+  opacity: 1;
+}
+
+.input selection {
+  background: @accent_soft;
+}
+
+.elephant-hint,
+.placeholder {
+  color: @foreground_muted;
+}
+
+.list {
+  background: rgba(17, 17, 27, 0.22);
+  border-radius: 22px;
+  padding: 8px;
+  color: @foreground;
+}
+
+.item-box {
+  border-radius: 18px;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+}
+
+row:selected .item-box {
+  background: @surface_hover;
+  border: 1px solid rgba(137, 180, 250, 0.14);
+}
+
+.item-text {
+  color: @foreground;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.item-subtext {
+  color: @foreground_muted;
+  font-size: 12px;
+  opacity: 1;
+}
+
+.item-image-text {
+  font-size: 28px;
+  margin-right: 14px;
+  color: @foreground;
+}
+
+.item-quick-activation {
+  background: @accent_soft;
+  border-radius: 5px;
+  padding: 10px;
+  color: @foreground;
+}
+
+.error {
+  background: rgba(243, 139, 168, 0.18);
+  color: #f38ba8;
+  border-radius: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.keybinds {
+  padding-top: 10px;
+  border-top: 1px solid @border;
+  font-size: 12px;
+  color: @foreground_muted;
+}
+
+.keybind-button {
+  opacity: 0.5;
+}
+
+.keybind-button:hover {
+  opacity: 0.75;
+}
+
+.keybind-bind {
+  text-transform: lowercase;
+  opacity: 0.35;
+  color: @foreground_muted;
+}
+
+.keybind-label {
+  color: @foreground_muted;
+}
+
+.preview-box {
+  background: @surface;
+  border-radius: 16px;
+  color: @foreground;
+}

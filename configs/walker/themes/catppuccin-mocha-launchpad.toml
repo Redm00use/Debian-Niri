@@ -1,0 +1,66 @@
+[ui.anchors]
+bottom = true
+left = true
+right = true
+top = true
+
+[ui.window]
+h_align = "fill"
+v_align = "fill"
+
+[ui.window.box]
+h_align = "center"
+width = 1280
+
+[ui.window.box.margins]
+top = 0
+bottom = 0
+left = 0
+right = 0
+
+[ui.window.box.search.prompt]
+name = "prompt"
+icon = "system-search-symbolic"
+theme = "search-icon"
+pixel_size = 20
+h_align = "center"
+v_align = "center"
+
+[ui.window.box.search.clear]
+name = "clear"
+icon = "edit-clear-symbolic"
+theme = "search-icon"
+pixel_size = 18
+h_align = "center"
+v_align = "center"
+
+[ui.window.box.search.input]
+h_align = "fill"
+h_expand = true
+icons = true
+
+[ui.window.box.search.spinner]
+hide = true
+
+[ui.window.box.scroll.list]
+max_height = 920
+min_width = 800
+max_width = 1200
+width = 1200
+
+[ui.window.box.scroll.list.item.icon]
+pixel_size = 64
+theme = ""
+
+[ui.window.box.scroll.list.item.activation_label]
+h_align = "fill"
+v_align = "fill"
+width = 1
+x_align = 1
+y_align = 0.5
+
+[ui.window.box.scroll.list.margins]
+top = 8
+bottom = 8
+left = 8
+right = 8

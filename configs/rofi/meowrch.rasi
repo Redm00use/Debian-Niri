@@ -1,0 +1,159 @@
+* {
+    bg-col: #1e1e2e;
+    bg-col-light: #313244;
+    border-col: #45475a;
+    selected-col: #89b4fa;
+    blue: #89b4fa;
+    fg-col: #cdd6f4;
+    fg-col2: #f38ba8;
+    grey: #6c7086;
+    search-bg: #313244;
+    search-fg: #cdd6f4;
+    width: 720;
+    font: "JetBrainsMono Nerd Font 12";
+}
+
+element-text, element-icon, mode-switcher {
+    background-color: inherit;
+    text-color: inherit;
+}
+
+window {
+    height: 430px;
+    border: 2px;
+    border-color: @border-col;
+    background-color: @bg-col;
+    border-radius: 18px;
+}
+
+mainbox {
+    background-color: @bg-col;
+    border-radius: 18px;
+}
+
+inputbar {
+    children: [ prompt, entry ];
+    background-color: transparent;
+    border-radius: 14px;
+    padding: 0px;
+    margin: 14px 14px 0px 14px;
+    border: 0px;
+}
+
+prompt {
+    background-color: @search-bg;
+    padding: 10px 12px;
+    text-color: @search-fg;
+    border-radius: 14px 0px 0px 14px;
+    margin: 0px;
+    font: "JetBrainsMono Nerd Font 11";
+}
+
+textbox-prompt-colon {
+    expand: false;
+    str: "";
+}
+
+entry {
+    padding: 10px 14px 10px 10px;
+    text-color: @search-fg;
+    background-color: @search-bg;
+    placeholder: "Search...";
+    placeholder-color: @grey;
+    vertical-align: 0.5;
+    border-radius: 0px 14px 14px 0px;
+}
+
+listview {
+    border: 0px 0px 0px;
+    padding: 0px;
+    margin: 14px;
+    columns: 4;
+    lines: 2;
+    background-color: @bg-col;
+    spacing: 12px;
+    cycle: true;
+    dynamic: true;
+    layout: vertical;
+    flow: horizontal;
+    fixed-height: true;
+    fixed-columns: true;
+}
+
+element {
+    padding: 10px 10px;
+    background-color: @bg-col-light;
+    text-color: @fg-col;
+    border-radius: 14px;
+    margin: 0px;
+    orientation: vertical;
+}
+
+element-icon {
+    size: 34px;
+    horizontal-align: 0.5;
+    margin: 0px 0px 6px 0px;
+}
+
+element-text {
+    horizontal-align: 0.5;
+    vertical-align: 0.5;
+    font: "JetBrainsMono Nerd Font 10";
+}
+
+element.selected {
+    background-color: @selected-col;
+    text-color: @bg-col;
+}
+
+element.selected.active {
+    background-color: @selected-col;
+    text-color: @bg-col;
+}
+
+mode-switcher {
+    spacing: 0;
+    margin: 0px 14px 14px 14px;
+    background-color: transparent;
+    border-radius: 0px;
+    padding: 0px;
+}
+
+button {
+    padding: 8px 12px;
+    background-color: @bg-col-light;
+    text-color: @grey;
+    vertical-align: 0.5;
+    horizontal-align: 0.5;
+    border-radius: 10px;
+    margin: 0px 8px 0px 0px;
+}
+
+button.selected {
+    background-color: @selected-col;
+    text-color: @bg-col;
+    font: "JetBrainsMono Nerd Font Bold 12";
+}
+
+message {
+    background-color: @bg-col-light;
+    margin: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 2px;
+    border-color: @border-col;
+}
+
+textbox {
+    padding: 6px;
+    text-color: @fg-col2;
+    background-color: @bg-col-light;
+}
+
+error-message {
+    padding: 10px;
+    border: 2px solid;
+    border-radius: 10px;
+    border-color: @fg-col2;
+    background-color: @bg-col;
+}

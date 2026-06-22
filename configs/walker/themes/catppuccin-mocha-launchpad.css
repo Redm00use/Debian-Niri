@@ -1,0 +1,189 @@
+/*
+ * catppuccin-mocha-launchpad.css
+ * Apple Launchpad-style full-screen theme for Walker (GTK3)
+ * Colors: Catppuccin Mocha
+ *
+ * Full-screen launcher with frosted glass tiles, large centered icons,
+ * and macOS Launchpad aesthetics. Uses a list layout styled to
+ * resemble the Launchpad grid as closely as possible.
+ */
+
+/* ── Catppuccin Mocha Palette ──────────────────────── */
+@define-color crust      #11111b;
+@define-color mantle     #181825;
+@define-color base       #1e1e2e;
+@define-color surface0   #313244;
+@define-color surface1   #45475a;
+@define-color overlay0   #6c7086;
+@define-color overlay1   #7f849c;
+@define-color text       #cdd6f4;
+@define-color subtext1   #bac2de;
+@define-color blue       #89b4fa;
+@define-color red        #f38ba8;
+
+/* ── Glassmorphism Derived ─────────────────────────── */
+@define-color glass-overlay  rgba(30, 30, 46, 0.78);
+@define-color glass-input    rgba(49, 50, 68, 0.60);
+@define-color glass-tile     rgba(49, 50, 68, 0.30);
+@define-color glass-hover    rgba(69, 71, 90, 0.50);
+@define-color glass-border   rgba(255, 255, 255, 0.06);
+@define-color glass-sel-brd  rgba(137, 180, 250, 0.18);
+
+/* ── Reset ─────────────────────────────────────────── */
+#window,
+#box,
+#search,
+#input,
+#password,
+#prompt,
+#clear,
+#typeahead,
+#list,
+child,
+#item,
+#text,
+#label,
+#bar,
+#sub,
+#activationlabel {
+    all: unset;
+    color: @text;
+}
+
+/* ── Window – Full Screen ──────────────────────────── */
+#window {
+    background: transparent;
+}
+
+/* ── Main Container – Glass Overlay ────────────────── */
+#box {
+    background: @glass-overlay;
+    border: none;
+    border-radius: 0;
+    padding: 48px 80px;
+}
+
+/* ── Search Bar – macOS Pill ───────────────────────── */
+#search {
+    background: @glass-input;
+    border: 1px solid @glass-border;
+    border-radius: 22px;
+    padding: 10px 18px;
+    margin: 0 0 28px 0;
+    min-height: 20px;
+}
+
+#prompt {
+    margin-left: 4px;
+    margin-right: 12px;
+    color: @overlay1;
+    font-size: 16px;
+}
+
+#clear {
+    color: @overlay0;
+    font-size: 14px;
+    padding: 0 6px;
+}
+
+#input {
+    background: transparent;
+    font-size: 18px;
+    font-weight: 500;
+    color: @text;
+    caret-color: @blue;
+}
+
+#input placeholder {
+    color: @overlay0;
+}
+
+#typeahead {
+    color: rgba(205, 214, 244, 0.25);
+}
+
+/* ── List Container ────────────────────────────────── */
+#list {
+    background: transparent;
+    border-radius: 18px;
+    padding: 4px;
+}
+
+/* ── App Tile – Vertical (icon above text) ──────────── */
+child {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    padding: 16px 12px;
+    margin: 4px 6px;
+    min-height: 80px;
+    -gtkbox-orientation: vertical;
+}
+
+child:hover {
+    background: @glass-hover;
+    border: 1px solid @glass-sel-brd;
+}
+
+child:selected {
+    background: @glass-hover;
+    border: 1px solid @glass-sel-brd;
+}
+
+/* ── Icon – on Frosted Glass Tile, centered ────────── */
+#icon {
+    margin-right: auto;
+    margin-bottom: 6px;
+    margin-left: auto;
+    margin-top: 0;
+    min-width: 52px;
+    min-height: 52px;
+    padding: 12px;
+    background: @glass-tile;
+    border-radius: 16px;
+}
+
+child:hover #icon,
+child:selected #icon {
+    background: rgba(69, 71, 90, 0.5);
+}
+
+/* ── App Name – centered below icon ────────────────── */
+#label {
+    color: @text;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+/* ── Subtitle – Hidden ─────────────────────────────── */
+#sub {
+    font-size: 0;
+    color: transparent;
+}
+
+/* ── Activation Label – Hidden ─────────────────────── */
+#activationlabel {
+    font-size: 1px;
+    color: transparent;
+}
+
+/* ── Bottom Bar – Hidden ───────────────────────────── */
+#bar {
+    opacity: 0;
+}
+
+/* ── Config Error ──────────────────────────────────── */
+#cfgerr {
+    background: rgba(243, 139, 168, 0.16);
+    color: @red;
+    border-radius: 14px;
+    margin-top: 16px;
+    padding: 12px 16px;
+    font-size: 12px;
+}
+
+/* ── Scrollbar – Hidden ────────────────────────────── */
+scrollbar,
+slider {
+    opacity: 0;
+}
