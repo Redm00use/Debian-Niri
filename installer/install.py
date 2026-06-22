@@ -765,11 +765,17 @@ WantedBy=graphical-session.target
     # Greetd (display manager) — with tuigreet matching NixOS setup
     log.info("Setting up greetd with tuigreet...")
     if not dry_run:
-        # Install tuigreet
+        # Install greetd + tuigreet
+        run(["apt-get", "install", "-y", "greetd"], check=False)
         try:
             run(["apt-get", "install", "-y", "tuigreet"], check=False)
         except Exception:
             log.warning("tuigreet not in repos; greetd will auto-login without greeter")
+
+        # Create greeter user for tuigreet (required by greetd default_session)
+        greeter_exists = run(["id", "greeter"], check=False, capture=True).returncode == 0
+        if not greeter_exists:
+            run(["useradd", "-r", "-s", "/sbin/nologin", "-d", "/var/lib/greetd", "-M", "greeter"], check=False)
 
         greetd_dir = Path("/etc/greetd")
         greetd_dir.mkdir(parents=True, exist_ok=True)
@@ -937,6 +943,23 @@ output_name=
 chooser_type=simple
 chooser_cmd=slurp -f %o
 """)
+
+    # ── Critical: Register wlr backend for Niri ──────────────────────────────
+    # Without this, xdg-desktop-portal-wlr ignores niri sessions and screen
+    # sharing / portal screenshots silently fail. The NixOS flake patches this
+    # at build time (see flake.nix lines 71-76).
+    wlr_portal = Path("/usr/share/xdg-desktop-portal/portals/wlr.portal")
+    if wlr_portal.exists():
+        content = wlr_portal.read_text()
+        if "niri" not in content:
+            content = content.replace(
+                "UseIn=wlroots;sway;Wayfire;river;phosh;Hyprland;",
+                "UseIn=wlroots;sway;Wayfire;river;phosh;Hyprland;niri;"
+            )
+            wlr_portal.write_text(content)
+            log.info("  Patched wlr.portal: added niri to UseIn")
+    else:
+        log.warning("  wlr.portal not found at expected path")
 
     # Ensure user owns portal configs
     run(["chown", "-R", f"{USERNAME}:{USER_GROUP}", str(portal_dir)])

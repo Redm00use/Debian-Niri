@@ -53,5 +53,12 @@ fi
 # Noctalia Shell is started by systemd user service (noctalia-shell.service)
 # Do NOT start it here - it would conflict with the service.
 
+# ── Activate graphical session target ──────────────────────────────────────────
+# Required for noctalia-shell.service, walker.service, and elephant.service
+# to start automatically via WantedBy=graphical-session.target
+if command -v systemctl &>/dev/null; then
+    systemctl --user start graphical-session.target 2>/dev/null || true
+fi
+
 # ── Start Niri ────────────────────────────────────────────────────────────────
 exec niri-session "$@"
