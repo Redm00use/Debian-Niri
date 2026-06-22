@@ -215,6 +215,22 @@ SYSTEM_PACKAGES = {
     "cliphist": "cliphist",
     "xwayland-satellite": "xwayland-satellite",
     "freerdp": "freerdp2-x11",
+    "sioyek": "sioyek",
+    "direnv": "direnv",
+    "lazygit": "lazygit",
+    "gh": "gh",
+    "fd": "fd-find",
+    "ripgrep": "ripgrep",
+    "ripdrag": "ripdrag",
+    "glow": "glow",
+    "ouch": "ouch",
+    "shellcheck": "shellcheck",
+    "shfmt": "shfmt",
+    "delta": "git-delta",
+    "lazydocker": "lazydocker",
+    "rofi-calc": "rofi-calc",
+    "rofi-emoji": "rofi-emoji",
+    "rofi-file-browser": "rofi-file-browser",
 
     # Audio
     "pipewire": "pipewire",
@@ -350,6 +366,15 @@ SYSTEM_PACKAGES = {
     "libjavascriptcoregtk-4.1-dev": "libjavascriptcoregtk-4.1-dev",
     "libwebkit2gtk-4.1-dev": "libwebkit2gtk-4.1-dev",
     "libappindicator3-dev": "libayatana-appindicator3-dev",
+    "lua-language-server": "lua-language-server",
+    "stylua": "stylua",
+    "prettier": "prettier",
+    "clang-tools": "clang-tools",
+    "gcc": "gcc",
+    "emmet-ls": "emmet-ls",
+    "mailspring": "mailspring",
+    "cava": "cava",
+    "fastfetch": "fastfetch",
 }
 
 # Desktop-only packages (isDesktop = true)
@@ -361,26 +386,29 @@ DESKTOP_PACKAGES = {
     "gnome-software": "gnome-software",
     "gnome-software-plugin-flatpak": "gnome-software-plugin-flatpak",
     "opentabletdriver": "opentabletdriver",
+    "lact": "lact",
+    "gamemode": "gamemode",
 }
 
 # Packages NOT in Debian repos (must be installed via alternative methods)
 SOURCE_BUILD_PACKAGES = {
-    "niri": "Niri compositor",
-    "quickshell": "QuickShell",
-    "noctalia-shell": "Noctalia Shell",
-    "walker": "Walker launcher",
-    "rofi": "Rofi (may need backports)",
-    "wezterm": "WezTerm",
-    "yazi": "Yazi file manager",
-    "cider": "Cider Apple Music client",
-    "sunder": "Sunder YouTube music",
-    "google-chrome-canary": "Google Chrome Canary",
-    "eww": "Elkowar's wacky widgets",
-    "gowall": "Gowall wallpaper tool",
-    "gpu-screen-recorder": "GPU screen recorder",
-    "vesktop": "Vesktop Discord client",
-    "nbfc-linux": "NoteBook FanControl",
-    "pfetch-rs": "pfetch-rs",
+    "niri": "Niri compositor (cargo)",
+    "quickshell": "QuickShell (cmake build)",
+    "noctalia-shell": "Noctalia Shell (cmake build)",
+    "walker": "Walker launcher (go install)",
+    "elephant": "Elephant data provider (go install)",
+    "rofi": "Rofi (apt backports)",
+    "wezterm": "WezTerm (.deb from GitHub)",
+    "yazi": "Yazi file manager (cargo)",
+    "cider": "Cider Apple Music client (.deb)",
+    "sunder": "Sunder YouTube music (cargo)",
+    "google-chrome-canary": "Google Chrome Canary (.deb)",
+    "eww": "Elkowar's wacky widgets (cargo)",
+    "gowall": "Gowall wallpaper tool (cargo)",
+    "gpu-screen-recorder": "GPU screen recorder (git)",
+    "vesktop": "Vesktop Discord client (.deb)",
+    "nbfc-linux": "NoteBook FanControl (pip)",
+    "pfetch-rs": "pfetch-rs (cargo)",
 }
 
 
@@ -396,11 +424,14 @@ def stage_1_prepare_system(dry_run: bool = False) -> None:
         "vm.mmap_min_addr": "4096",
         "vm.overcommit_memory": "1",
     }
+    sysctl_content = []
     for key, value in sysctl_settings.items():
         if not dry_run:
             run(["sysctl", "-w", f"{key}={value}"], check=False)
-            write_file(Path(f"/etc/sysctl.d/90-nixdots.conf"),
-                       f"# Nixdots migration - set by installer\n{key}={value}\n", dry_run)
+            sysctl_content.append(f"{key}={value}")
+    if not dry_run:
+        write_file(Path("/etc/sysctl.d/90-nixdots.conf"),
+                   f"# Nixdots migration - set by installer\n" + "\n".join(sysctl_content) + "\n")
 
     # NetworkManager DNS
     if not dry_run:
@@ -434,6 +465,39 @@ def stage_1_prepare_system(dry_run: bool = False) -> None:
             run(["apt-get", "update"], check=False)
         except Exception:
             log.warning("Failed to add i386 architecture")
+
+    # ── AMD GPU Environment Variables ────────────────────────────────────
+    if not dry_run:
+        gpu_env_path = Path("/etc/environment.d/90-nixdots-gpu.conf")
+        gpu_env_path.parent.mkdir(parents=True, exist_ok=True)
+        gpu_env_path.write_text(
+            "LIBVA_DRIVER_NAME=radeonsi\n"
+            "VDPAU_DRIVER=radeonsi\n"
+            "NIXOS_OZONE_WL=1\n"
+        )
+
+    # ── Chrome/Chromium Managed Policies ─────────────────────────────────
+    if not dry_run:
+        chrome_policy_dir = Path("/etc/opt/chrome/policies/managed")
+        chrome_policy_dir.mkdir(parents=True, exist_ok=True)
+        import json
+        policy = {
+            "ExtensionSettings": {
+                "*": {"installation_mode": "allowed"},
+                "bkkmolkhemgaeaeggcmfbghljjjoofoh": {  # Catppuccin Mocha
+                    "installation_mode": "normal_installed",
+                    "update_url": "https://clients2.google.com/service/update2/crx"
+                },
+                "clngdbkpkpeebahjckkjfobafhncgmne": {  # Stylus
+                    "installation_mode": "normal_installed",
+                    "update_url": "https://clients2.google.com/service/update2/crx"
+                },
+            }
+        }
+        write_file(chrome_policy_dir / "10-catppuccin-mocha.json", json.dumps(policy, indent=2))
+        # Also for chromium if present
+        Path("/etc/chromium/policies/managed").mkdir(parents=True, exist_ok=True)
+        write_file(Path("/etc/chromium/policies/managed/10-catppuccin-mocha.json"), json.dumps(policy, indent=2))
 
 
 # ── Stage 2: Package Installation ──────────────────────────────────────────────
@@ -539,6 +603,49 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
             run(["apt-get", "install", "-f", "-y"])
         except Exception as e:
             log.error(f"Failed to install Chrome Canary: {e}")
+
+    # Walker launcher (Go)
+    log.info("Installing Walker launcher + Elephant...")
+    if not dry_run:
+        if not shutil.which("walker"):
+            run(["go", "install", "github.com/abenz1267/walker@latest"], check=False)
+        if not shutil.which("elephant"):
+            run(["go", "install", "github.com/abenz1267/elephant@latest"], check=False)
+
+    # Cider (Apple Music client)
+    log.info("Installing Cider...")
+    if not dry_run and not shutil.which("cider"):
+        try:
+            run(["wget", "-O", "/tmp/cider.deb",
+                 "https://github.com/ciderapp/Cider/releases/download/v4.0.0/Cider_4.0.0_amd64.deb"], check=False)
+            run(["dpkg", "-i", "/tmp/cider.deb"], check=False)
+            run(["apt-get", "install", "-f", "-y"], check=False)
+        except Exception as e:
+            log.error(f"Failed to install Cider: {e}")
+            log.info("Try manual install from https://cider.sh/download")
+
+    # Vesktop (Discord alternative)
+    log.info("Installing Vesktop...")
+    if not dry_run and not shutil.which("vesktop"):
+        try:
+            run(["wget", "-O", "/tmp/vesktop.deb",
+                 "https://github.com/Vencord/Vesktop/releases/latest/download/Vesktop.deb"], check=False)
+            run(["dpkg", "-i", "/tmp/vesktop.deb"], check=False)
+            run(["apt-get", "install", "-f", "-y"], check=False)
+        except Exception as e:
+            log.error(f"Failed to install Vesktop: {e}")
+
+    # Gpu-screen-recorder
+    log.info("Installing GPU screen recorder...")
+    if not dry_run and not shutil.which("gpu-screen-recorder"):
+        try:
+            run(["apt-get", "install", "-y", "gpu-screen-recorder"], check=False)
+        except Exception:
+            log.warning("gpu-screen-recorder not in repos; skip")
+
+    # pfetch-rs
+    if not dry_run and not shutil.which("pfetch"):
+        run(["cargo", "install", "pfetch-rs"], check=False)
 
 
 # ── Stage 4: User & Groups ────────────────────────────────────────────────────
@@ -665,6 +772,67 @@ done
         Path("/usr/local/bin/bluetooth-device-reconnect").write_text(bluetooth_script)
         run(["chmod", "+x", "/usr/local/bin/bluetooth-device-reconnect"])
 
+    # Bluetooth watchdog service (oneshot reconnect at boot)
+    if not dry_run:
+        bt_reconnect_unit = Path("/etc/systemd/system/bluetooth-keyboard-reconnect.service")
+        bt_reconnect_unit.parent.mkdir(parents=True, exist_ok=True)
+        bt_reconnect_unit.write_text(f"""[Unit]
+Description=Reconnect managed Bluetooth devices
+After=bluetooth.service multi-user.target
+Wants=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bluetooth-device-reconnect 68:FE:F7:62:E8:2A
+RemainAfterExit=false
+
+[Install]
+WantedBy=multi-user.target
+""")
+        run(["systemctl", "enable", "bluetooth-keyboard-reconnect"], check=False)
+        # Bluetooth experimental mode
+        bt_main = Path("/etc/bluetooth/main.conf")
+        if bt_main.exists():
+            config_text = bt_main.read_text()
+            if "Experimental = true" not in config_text:
+                bt_main.write_text(config_text + "\n[General]\nExperimental = true\n")
+
+    # uinput for OpenTabletDriver
+    if not dry_run:
+        uinput_rules = Path("/etc/udev/rules.d/99-uinput.rules")
+        uinput_rules.write_text('KERNEL=="uinput", SUBSYSTEM=="misc", OPTIONS+="static_node=uinput", TAG+="uaccess"\n')
+
+    # Magic Trackpad udev fuzz fix
+    if not dry_run:
+        trackpad_rules = Path("/etc/udev/rules.d/99-magic-trackpad.rules")
+        trackpad_rules.write_text(
+            '# Apple Magic Trackpad 1 -- supply missing LIBINPUT_FUZZ_* from kernel fuzz\n'
+            'ACTION=="add|change", SUBSYSTEM=="input", \\\n'
+            '  ATTRS{id/vendor}=="05ac", ATTRS{id/product}=="030e", \\\n'
+            '  ENV{LIBINPUT_FUZZ_00}="4", \\\n'
+            '  ENV{LIBINPUT_FUZZ_01}="4", \\\n'
+            '  ENV{LIBINPUT_FUZZ_35}="4", \\\n'
+            '  ENV{LIBINPUT_FUZZ_36}="4"\n\n'
+            '# Disable middle-button area on Magic Trackpad 1\n'
+            'ACTION=="add|change", SUBSYSTEM=="input", \\\n'
+            '  ATTRS{id/vendor}=="05ac", ATTRS{id/product}=="030e", \\\n'
+            '  ENV{LIBINPUT_ATTR_MIDDLE_BUTTON_AREA_ENABLED}="0"\n'
+        )
+
+    # Libinput touchpad settings
+    if not dry_run:
+        libinput_conf = Path("/etc/libinput/local-overrides.quirks")
+        libinput_conf.parent.mkdir(parents=True, exist_ok=True)
+        libinput_conf.write_text(
+            '[Nixdots Touchpad Settings]\n'
+            'MatchUdevType=touchpad\n'
+            'MatchDMIMatch=*\n'
+            'AttrTapEnabled=1\n'
+            'AttrNaturalScrollingEnabled=1\n'
+            'AttrScrollMethod=2\n'
+            'AttrClickMethod=1\n'
+        )
+
     # PipeWire bluetooth config
     if not dry_run:
         pw_dir = Path("/etc/wireplumber/bluetooth.lua.d")
@@ -729,10 +897,153 @@ def stage_7_install_user_configs(dry_run: bool = False) -> None:
 
     config_target = Path(f"{USER_HOME}/.config")
     local_target = Path(f"{USER_HOME}/.local/share")
+    bin_target = Path(f"{USER_HOME}/.local/bin")
 
     if dry_run:
         log.info("  [dry-run] Would install user configs")
         return
+
+    bin_target.mkdir(parents=True, exist_ok=True)
+
+    # ── Desktop Entry Cleanup (remove stale entries) ────────────────────────
+    stale_entries = [
+        "Game Launcher.desktop",
+        "World of Tanks Blitz.desktop",
+        "PortProton.desktop",
+        "chrome-blgdilankhbcpipclgpdndahbehalgkh-Default.desktop",
+        "ru.linux_gaming.PortProton.desktop",
+    ]
+    apps_dir = Path(f"{USER_HOME}/.local/share/applications")
+    for entry in stale_entries:
+        target = apps_dir / entry
+        if target.exists():
+            target.unlink()
+            log.info(f"  Removed stale desktop entry: {entry}")
+    # Stale icons
+    for icon_path in [
+        Path(f"{USER_HOME}/.local/share/icons/hicolor/32x32/apps/chrome-blgdilankhbcpipclgpdndahbehalgkh-Default.png"),
+        Path(f"{USER_HOME}/.local/share/icons/hicolor/48x48/apps/chrome-blgdilankhbcpipclgpdndahbehalgkh-Default.png"),
+        Path(f"{USER_HOME}/.local/share/icons/hicolor/128x128/apps/chrome-blgdilankhbcpipclgpdndahbehalgkh-Default.png"),
+        Path(f"{USER_HOME}/.local/share/icons/hicolor/256x256/apps/chrome-blgdilankhbcpipclgpdndahbehalgkh-Default.png"),
+    ]:
+        if icon_path.exists():
+            icon_path.unlink()
+
+    # ── Helper scripts ──────────────────────────────────────────────────────
+    # xfreerdp3 wrapper
+    xfreerdp3_sh = bin_target / "xfreerdp3"
+    xfreerdp3_sh.write_text('#!/bin/bash\nexec freerdp "$@"\n')
+    xfreerdp3_sh.chmod(0o755)
+
+    # mic_toggle wrapper
+    mic_toggle_sh = bin_target / "mic_toggle"
+    mic_toggle_sh.write_text(
+        '#!/bin/bash\n'
+        'STATE_FILE="/tmp/mic_muted_invisible"\n'
+        'if [ -f "$STATE_FILE" ]; then\n'
+        '  wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.55\n'
+        '  rm "$STATE_FILE"\n'
+        'else\n'
+        '  wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0\n'
+        '  touch "$STATE_FILE"\n'
+        'fi\n'
+    )
+    mic_toggle_sh.chmod(0o755)
+
+    # scrolllock_keyboard toggle
+    scrolllock_sh = bin_target / "scrolllock_keyboard"
+    scrolllock_sh.write_text(
+        '#!/bin/bash\n'
+        'DEV="input*::scrolllock"\n'
+        'STATE_FILE="/tmp/scrolllock_active"\n'
+        'if [ -f "$STATE_FILE" ]; then\n'
+        '  rm "$STATE_FILE"\n'
+        '  pkill -f "scrolllock_daemon" || true\n'
+        '  brightnessctl --device="$DEV" set 0\n'
+        '  exit 0\n'
+        'fi\n'
+        'touch "$STATE_FILE"\n'
+        'echo "none" | brightnessctl --device="$DEV" set 1\n'
+        '(\n'
+        '  exec -a scrolllock_daemon sh -c \'\n'
+        '    while [ -f /tmp/scrolllock_active ]; do\n'
+        '      if [ "$(brightnessctl --device="input*::scrolllock" get)" -eq 0 ]; then\n'
+        '        brightnessctl --device="input*::scrolllock" set 1\n'
+        '      fi\n'
+        '      sleep 0.2\n'
+        '    done\n'
+        '  \'\n'
+        ') & disown\n'
+    )
+    scrolllock_sh.chmod(0o755)
+
+    # catppuccin-userstyles wrapper
+    catppuccin_sh = bin_target / "catppuccin-userstyles"
+    catppuccin_sh.write_text(
+        '#!/bin/bash\n'
+        'exec google-chrome --new-window "https://github.com/catppuccin/userstyles/releases/download/all-userstyles-export/import.json" "chrome-extension://clngdbkpkpeebahjckkjfobafhncgmne/manage.html"\n'
+    )
+    catppuccin_sh.chmod(0o755)
+
+    # ── Claude Code wrappers (DeepSeek through Anthropic) ─────────────────────
+    claude_env = (
+        'export ANTHROPIC_BASE_URL="https://api.deepseek.com/anthropic"\n'
+        'export ANTHROPIC_AUTH_TOKEN="${ANTHROPIC_AUTH_TOKEN:-}"  # Set via environment variable\n'
+        'export CLAUDE_CODE_EFFORT_LEVEL="max"\n'
+        'export CLAUDE_CODE_AUTO_APPROVE=1\n'
+    )
+    for name, model in [
+        ("claude", "deepseek-v4-pro"),
+        ("c-pro", "deepseek-v4-pro"),
+        ("c-flash", "deepseek-v4-flash"),
+        ("c-chat", "deepseek-chat"),
+        ("c-reasoner", "deepseek-reasoner"),
+        ("c-r", "deepseek-reasoner"),
+    ]:
+        claude_bin = bin_target / name
+        claude_bin.write_text(
+            '#!/bin/bash\n'
+            f'{claude_env}'
+            f'export ANTHROPIC_MODEL="{model}"\n'
+            'export CLAUDE_CODE_SUBAGENT_MODEL="deepseek-v4-flash"\n'
+            'CLI_PATH="$HOME/.npm-global/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe"\n'
+            'if [ ! -f "$CLI_PATH" ]; then\n'
+            '  npm install -g @anthropic-ai/claude-code@2.1.178 --no-audit --no-fund 2>&1\n'
+            'fi\n'
+            'exec "$CLI_PATH" "$@"\n'
+        )
+        claude_bin.chmod(0o755)
+
+    # ── Walker systemd user services ─────────────────────────────────────────
+    walker_unit_dir = config_target / "systemd" / "user"
+    walker_unit_dir.mkdir(parents=True, exist_ok=True)
+    walker_service = walker_unit_dir / "walker.service"
+    walker_service.write_text(
+        '[Unit]\n'
+        'Description=Walker launcher service\n'
+        'PartOf=graphical-session.target\n'
+        'After=graphical-session.target\n'
+        '[Service]\n'
+        'ExecStart=walker --gapplication-service\n'
+        'Restart=on-failure\n'
+        'RestartSec=3\n'
+        '[Install]\n'
+        'WantedBy=graphical-session.target\n'
+    )
+    elephant_service = walker_unit_dir / "elephant.service"
+    elephant_service.write_text(
+        '[Unit]\n'
+        'Description=Elephant data provider service\n'
+        'PartOf=graphical-session.target\n'
+        'After=graphical-session.target\n'
+        'Before=walker.service\n'
+        '[Service]\n'
+        'ExecStart=elephant\n'
+        'Restart=on-failure\n'
+        'RestartSec=3\n'
+        '[Install]\n'
+        'WantedBy=graphical-session.target\n'
+    )
 
     # ── Niri Config ──────────────────────────────────────────────────────────
     niri_cfg = CONFIG_SRC / "niri" / "config.kdl"
@@ -896,20 +1207,25 @@ gradient_color_8 = '#f9e2af'
     fastfetch_target.mkdir(parents=True, exist_ok=True)
     (fastfetch_target / "config.jsonc").write_text("""{
   "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/dev/doc/json_schema.json",
-  "logo": { "type": "kitty", "height": 12, "padding": { "top": 2, "right": 4 } },
+  "logo": {
+    "type": "kitty",
+    "source": "$(find \"$HOME/Pictures/Wallpapers/fastfetch\" -name \"*.png\" 2>/dev/null | sort -R | head -1)",
+    "height": 12,
+    "padding": { "top": 2, "right": 4 }
+  },
   "display": { "separator": " " },
   "modules": [
     "break", "break", "break",
     { "type": "title", "keyWidth": 10 },
     "break",
-    { "type": "os", "key": " ", "keyColor": "33" },
-    { "type": "kernel", "key": " ", "keyColor": "33" },
-    { "type": "packages", "key": " ", "keyColor": "33" },
-    { "type": "shell", "key": " ", "keyColor": "33" },
-    { "type": "terminal", "key": " ", "keyColor": "33" },
-    { "type": "wm", "key": " ", "keyColor": "33" },
-    { "type": "uptime", "key": " ", "keyColor": "33" },
-    { "type": "media", "key": "󰝚 ", "keyColor": "33" },
+    { "type": "os", "key": "\uf013 ", "keyColor": "33" },
+    { "type": "kernel", "key": "\uf173 ", "keyColor": "33" },
+    { "type": "packages", "key": "\ueb29 ", "keyColor": "33" },
+    { "type": "shell", "key": "\uf120 ", "keyColor": "33" },
+    { "type": "terminal", "key": "\uf2c9 ", "keyColor": "33" },
+    { "type": "wm", "key": "\uf2c8 ", "keyColor": "33" },
+    { "type": "uptime", "key": "\ue30d ", "keyColor": "33" },
+    { "type": "media", "key": "\uf05e ", "keyColor": "33" },
     "break", "break"
   ]
 }
@@ -971,6 +1287,101 @@ theme=Catppuccin-Mocha
     except Exception:
         pass
 
+    # ── WPS Office Skin Config ────────────────────────────────────────────────
+    wps_skin = Path(f"{USER_HOME}/.var/app/com.wps.Office/data/Kingsoft/office6/skinsv2/default/histroy.ini")
+    wps_skin.parent.mkdir(parents=True, exist_ok=True)
+    wps_skin.write_text(
+        '[skinPathPool]\n'
+        '2018white=\n'
+        '2018white_dark=\n'
+        '\n'
+        '[wpsoffice]\n'
+        'history=2018white_dark\n'
+        'lastSkin=2018white_dark\n'
+    )
+
+    # ── GTK Bookmarks ────────────────────────────────────────────────────────
+    gtk3_bookmarks = config_target / "gtk-3.0" / "bookmarks"
+    gtk3_bookmarks.parent.mkdir(parents=True, exist_ok=True)
+    for bm in ["Documents", "Downloads", "Pictures", "Videos", "Music", "Workspace", "nixdots"]:
+        gtk3_bookmarks.write_text(f"file://{USER_HOME}/{bm}\n")
+
+    # ── Dconf settings ───────────────────────────────────────────────────────
+    try:
+        run(["dconf", "write", "/org/gnome/desktop/wm/preferences/button-layout", "'':'"], check=False)
+    except Exception:
+        pass
+
+    # ── Flatpak WPS Office locale overrides ───────────────────────────────────
+    try:
+        run(["flatpak", "override", "--user", "com.wps.Office",
+             "--env=LANG=ru_RU.UTF-8",
+             "--env=LANGUAGE=ru_RU:ru",
+             "--env=LC_ALL=ru_RU.UTF-8",
+             "--env=LC_MESSAGES=ru_RU.UTF-8"], check=False)
+    except Exception:
+        pass
+
+    # ── Zed AI Config ────────────────────────────────────────────────────────
+    zed_target = config_target / "zed"
+    zed_target.mkdir(parents=True, exist_ok=True)
+    zed_settings = zed_target / "settings.json"
+    zed_settings.write_text(json.dumps({
+        "agent": {
+            "instructions": "[NOTES FOR DEEPSEEK AGENT]\n- Sudo password: 1408",
+            "tool_permissions": {
+                "tools": {
+                    "fetch": {"default": "allow"},
+                    "terminal": {"default": "allow", "always_allow": [{"pattern": "^sudo\\b"}]}
+                }
+            },
+            "default_profile": "write",
+            "default_model": {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "enable_thinking": False
+            },
+            "favorite_models": [
+                {"provider": "deepseek", "model": "deepseek-chat", "enable_thinking": False},
+                {"provider": "deepseek", "model": "deepseek-reasoner", "enable_thinking": True},
+            ]
+        },
+        "theme": {"mode": "dark", "light": "One Light", "dark": "One Dark"},
+        "ui_font_size": 16,
+        "buffer_font_size": 15,
+        "icon_theme": "Zed (Default)",
+    }, indent=2))
+
+    # ── DEEP_SEEK_API_KEY in session vars ────────────────────────────────────
+    env_file = Path(f"{USER_HOME}/.config/environment.d/zed-deepseek.conf")
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text('# DEEP_SEEK_API_KEY=your-key-here  # Set via environment variable\n')
+
+    # ── Rofi extraConfig ─────────────────────────────────────────────────────
+    rofi_target = config_target / "rofi"
+    rofi_config_path = rofi_target / "config.rasi"
+    rofi_config_path.write_text(
+        'configuration {\n'
+        '    modi: "drun,run,filebrowser,emoji,calc";\n'
+        '    show-icons: true;\n'
+        '    icon-theme: "Papirus-Dark";\n'
+        '    display-drun: " Apps";\n'
+        '    display-run: " Run";\n'
+        '    display-filebrowser: " Files";\n'
+        '    display-emoji: " Emoji";\n'
+        '    display-calc: " Calc";\n'
+        '    matching: "fuzzy";\n'
+        '    sort: true;\n'
+        '    sorting-method: "fzf";\n'
+        '    hover-select: true;\n'
+        '    hide-scrollbar: true;\n'
+        '    sidebar-mode: true;\n'
+        '    click-to-exit: true;\n'
+        '    terminal: "wezterm";\n'
+        '}\n'
+        '@theme "meowrch"\n'
+    )
+
     # ── Zsh Config ───────────────────────────────────────────────────────────
     zshrc = Path(f"{USER_HOME}/.zshrc")
     # Backup if exists
@@ -1021,7 +1432,7 @@ if [[ -o interactive ]] && [[ -z "$FASTFETCH_SHOWN" ]] && [[ "$TERM" != "dumb" ]
 fi
 
 # ── Oh My Zsh ──────────────────────────────────────────────────────────────
-plugins=(git)
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 source $ZSH/oh-my-zsh.sh
 """
     write_file(zshrc, zshrc_content, dry_run)
@@ -1098,17 +1509,6 @@ Type=Application
 Categories=Utility;
 """)
 
-    # ── Zed Config ───────────────────────────────────────────────────────────
-    zed_target = config_target / "zed"
-    zed_target.mkdir(parents=True, exist_ok=True)
-    zed_settings = zed_target / "settings.json"
-    zed_settings.write_text(json.dumps({
-        "theme": {"mode": "dark", "light": "One Light", "dark": "One Dark"},
-        "ui_font_size": 16,
-        "buffer_font_size": 15,
-        "icon_theme": "Zed (Default)",
-    }, indent=2))
-
     # ── XDG Portal Override ──────────────────────────────────────────────────
     # Fix for gnome-boxes DBusActivatable
     boxes_desktop = applications_target / "org.gnome.Boxes.desktop"
@@ -1136,7 +1536,18 @@ XDG_SESSION_DESKTOP=niri
 XDG_ICON_THEME=Papirus-Dark
 ICON_THEME=Papirus-Dark
 QS_ICON_THEME=Papirus-Dark
+# DEEP_SEEK_API_KEY=  # Set via environment variable or uncomment and fill
 """)
+
+    # ── Install zsh-autosuggestions and zsh-syntax-highlighting ──────────────
+    zsh_custom = Path(f"{USER_HOME}/.oh-my-zsh/custom")
+    zsh_custom.mkdir(parents=True, exist_ok=True)
+    autosuggest_dir = zsh_custom / "plugins" / "zsh-autosuggestions"
+    if not autosuggest_dir.exists():
+        run(["git", "clone", "https://github.com/zsh-users/zsh-autosuggestions", str(autosuggest_dir)], check=False)
+    syntax_dir = zsh_custom / "plugins" / "zsh-syntax-highlighting"
+    if not syntax_dir.exists():
+        run(["git", "clone", "https://github.com/zsh-users/zsh-syntax-highlighting", str(syntax_dir)], check=False)
 
     # Fix ownership
     run(["chown", "-R", f"{USERNAME}:{USER_GROUP}", f"{USER_HOME}/.config"])
@@ -1207,6 +1618,57 @@ def stage_10_finalize(dry_run: bool = False) -> None:
 ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::scrolllock", RUN+="/bin/sh -c 'chmod 666 /sys/class/leds/%k/brightness /sys/class/leds/%k/trigger'"
 """
     Path("/etc/udev/rules.d/99-nixdots.rules").write_text(udev_rules)
+
+    # ── Minecraft Server (optional) ───────────────────────────────────────────
+    # Create user and directory
+    minecraft_user_exists = run(["id", "minecraft"], check=False, capture=True).returncode == 0
+    if not minecraft_user_exists:
+        run(["useradd", "-r", "-s", "/sbin/nologin", "-d", "/var/lib/minecraft-server", "-M", "minecraft"], check=False)
+        run(["groupadd", "-r", "minecraft"], check=False)
+    Path("/var/lib/minecraft-server").mkdir(parents=True, exist_ok=True)
+    Path("/var/lib/cloudflared-tunnel").mkdir(parents=True, exist_ok=True)
+    run(["chown", "minecraft:minecraft", "/var/lib/minecraft-server"], check=False)
+    # Cloudflared
+    run(["apt-get", "install", "-y", "cloudflared"], check=False)
+
+    # ── NBFC (NoteBook FanControl) ────────────────────────────────────────────
+    nbfc_installed = shutil.which("nbfc_service") is not None
+    if not nbfc_installed:
+        try:
+            run(["pip3", "install", "nbfc-linux"], check=False)
+        except Exception:
+            log.warning("Failed to install nbfc-linux; skip")
+
+    # ── GPU Fan Control (LACT) ───────────────────────────────────────────────
+    run(["apt-get", "install", "-y", "lact"], check=False)
+    kernel_param = "amdgpu.ppfeaturemask=0xfffd7fff"
+    current_params = ""
+    try:
+        with open("/etc/default/grub") as f:
+            current_params = f.read()
+        if kernel_param not in current_params:
+            new_params = current_params.replace(
+                'GRUB_CMDLINE_LINUX_DEFAULT="',
+                f'GRUB_CMDLINE_LINUX_DEFAULT="{kernel_param} '
+            )
+            with open("/etc/default/grub", "w") as f:
+                f.write(new_params)
+            run(["update-grub"], check=False)
+    except Exception:
+        log.warning("Could not add GPU fan kernel param; add amdgpu.ppfeaturemask manually")
+
+    # ── Gamemode config ───────────────────────────────────────────────────────
+    gamemode_cfg = Path("/etc/gamemode.ini")
+    gamemode_cfg.write_text(
+        '[general]\n'
+        'renice=5\n'
+        'softrealtime=auto\n'
+        '[cpu]\n'
+        'governor=schedutil\n'
+        '[custom]\n'
+        'start=/usr/bin/notify-send "GameMode started"\n'
+        'end=/usr/bin/notify-send "GameMode ended"\n'
+    )
 
     # Run udevadm
     run(["udevadm", "control", "--reload-rules"], check=False)
