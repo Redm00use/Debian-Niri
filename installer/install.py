@@ -214,24 +214,18 @@ SYSTEM_PACKAGES = {
     "wl-clipboard": "wl-clipboard",
     "wtype": "wtype",
     "cliphist": "cliphist",
-    "xwayland-satellite": "xwayland-satellite",
-    "freerdp": "freerdp2-x11",
+    "freerdp": "freerdp3-x11",
     "sioyek": "sioyek",
     "direnv": "direnv",
     "lazygit": "lazygit",
     "gh": "gh",
     "fd": "fd-find",
     "ripgrep": "ripgrep",
-    "ripdrag": "ripdrag",
     "glow": "glow",
-    "ouch": "ouch",
     "shellcheck": "shellcheck",
     "shfmt": "shfmt",
     "delta": "git-delta",
-    "lazydocker": "lazydocker",
-    "rofi-calc": "rofi-calc",
-    "rofi-emoji": "rofi-emoji",
-    "rofi-file-browser": "rofi-file-browser",
+
 
     # Audio
     "pipewire": "pipewire",
@@ -243,7 +237,7 @@ SYSTEM_PACKAGES = {
 
     # Bluetooth
     "bluez": "bluez",
-    "bluez-utils": "bluez-utils",
+
     "blueman": "blueman",
 
     # Printing
@@ -260,9 +254,9 @@ SYSTEM_PACKAGES = {
     "papirus-icon-theme": "papirus-icon-theme",
     "qt5ct": "qt5ct",
     "qt6ct": "qt6ct",
-    "qt5-style-plugins": "qt5-style-plugins",
+
     "qt6-style-kvantum": "qt6-style-kvantum",
-    "qt6-style-kvantum-themes": "qt6-style-kvantum-themes",
+
     "kvantum": "qt6-style-kvantum",
 
     # Fonts
@@ -284,7 +278,7 @@ SYSTEM_PACKAGES = {
     "vdpau-driver-all": "vdpau-driver-all",
     "libgl1-mesa-dri": "libgl1-mesa-dri",
     "libglx-mesa0": "libglx-mesa0",
-    "rocm-opencl-runtime": "rocm-opencl-runtime",
+
 
     # Virtualization
     "qemu-kvm": "qemu-system-x86",
@@ -298,16 +292,14 @@ SYSTEM_PACKAGES = {
     "dnsmasq": "dnsmasq",
 
     # Steam / Gaming
-    "steam": "steam",
+    "steam": "steam-installer",
     "steam-devices": "steam-devices",
     "gamemode": "gamemode",
     "mangohud": "mangohud",
-    "protonup-qt": "protonup-qt",  # May need backport/experimental on Debian stable
-    "gamescope": "gamescope",
+
 
     # Polkit / Auth
-    "policykit-1": "policykit-1",
-    "polkit-kde-agent-1": "policykit-1-gnome",
+    "polkitd": "polkitd",
     "gnome-keyring": "gnome-keyring",
     "libpam-gnome-keyring": "libpam-gnome-keyring",
     "accounts-daemon": "accountsservice",
@@ -331,11 +323,11 @@ SYSTEM_PACKAGES = {
     "imv": "imv",
     "qimgv": "qimgv",
     "libreoffice": "libreoffice",
-    "telegram-desktop": "telegram-desktop",
+
     "ark": "ark",
     "gparted": "gparted",
     "obs-studio": "obs-studio",
-    "obsidian": "obsidian",
+
     "qbittorrent": "qbittorrent",
     "android-tools": "android-tools-adb",
 
@@ -368,13 +360,10 @@ SYSTEM_PACKAGES = {
     "libjavascriptcoregtk-4.1-dev": "libjavascriptcoregtk-4.1-dev",
     "libwebkit2gtk-4.1-dev": "libwebkit2gtk-4.1-dev",
     "libappindicator3-dev": "libayatana-appindicator3-dev",
-    "lua-language-server": "lua-language-server",
-    "stylua": "stylua",
-    "prettier": "prettier",
+
     "clang-tools": "clang-tools",
     "gcc": "gcc",
-    "emmet-ls": "emmet-ls",
-    "mailspring": "mailspring",
+
     "cava": "cava",
     "fastfetch": "fastfetch",
 }
@@ -461,10 +450,25 @@ def stage_1_prepare_system(dry_run: bool = False) -> None:
         except Exception:
             log.warning("Keymap setup failed")
 
-    # Enable 32-bit architecture for Steam
+    # Enable 32-bit architecture and contrib/non-free for Steam
     if not dry_run:
         try:
             run(["dpkg", "--add-architecture", "i386"], check=False)
+            # Ensure contrib and non-free are in sources.list
+            sources_list = Path("/etc/apt/sources.list")
+            if sources_list.exists():
+                content = sources_list.read_text()
+                new_lines = []
+                for line in content.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith("deb ") and "contrib" not in stripped and "non-free" not in stripped:
+                        line = line.rstrip() + " contrib non-free"
+                    elif stripped.startswith("deb ") and "contrib" in stripped and "non-free" not in stripped:
+                        line = line.rstrip() + " non-free"
+                    elif stripped.startswith("deb ") and "non-free" in stripped and "contrib" not in stripped:
+                        line = line.rstrip() + " contrib"
+                    new_lines.append(line)
+                sources_list.write_text("\n".join(new_lines) + "\n")
             run(["apt-get", "update"], check=False)
         except Exception:
             log.warning("Failed to add i386 architecture")
@@ -715,27 +719,6 @@ def stage_5_setup_services(dry_run: bool = False) -> None:
         run(["systemctl", "--user", "enable", "wireplumber"], check=False)
         # Disable pulseaudio if present
         run(["systemctl", "--user", "disable", "pulseaudio"], check=False)
-
-    # Polkit agent
-    if not dry_run:
-        polkit_dir = Path(f"{USER_HOME}/.config/systemd/user")
-        polkit_dir.mkdir(parents=True, exist_ok=True)
-        polkit_service = polkit_dir / "polkit-gnome-authentication-agent-1.service"
-        polkit_service.write_text("""[Unit]
-Description=polkit-gnome-authentication-agent-1
-After=graphical-session.target
-Wants=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1
-Restart=on-failure
-RestartSec=1
-TimeoutStopSec=10
-
-[Install]
-WantedBy=graphical-session.target
-""")
 
     # ── Deploy system files (niri-session, wayland-session entry, noctalia service) ──
     if not dry_run:
