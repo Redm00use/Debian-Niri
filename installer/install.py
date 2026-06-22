@@ -149,21 +149,42 @@ def copy_file(src: Path, dst: Path, dry_run: bool = False) -> None:
     log.debug(f"  Copied: {src} → {dst}")
 
 
+def existing_groups() -> set:
+    """Return set of all group names present on the system."""
+    groups = set()
+    try:
+        with open("/etc/group", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and ":" in line:
+                    groups.add(line.split(":", 1)[0])
+    except Exception:
+        pass
+    return groups
+
+
 def ensure_user_exists(username: str, dry_run: bool = False) -> None:
     """Create user if they don't exist."""
     if dry_run:
         log.info(f"  [dry-run] Would ensure user exists: {username}")
         return
+    # Only add to groups that actually exist on the system
+    wanted = ["plugdev", "video", "input", "kvm", "libvirt", "lpadmin"]
+    valid = [g for g in wanted if g in existing_groups()]
     result = run(["id", username], check=False, capture=True)
     if result.returncode != 0:
         log.info(f"Creating user: {username}")
-        run(["useradd", "-m", "-G", "wheel,networkmanager,kvm,libvirtd,plugdev,video,input",
-             "-s", "/usr/bin/zsh", username])
+        if valid:
+            run(["useradd", "-m", "-G", ",".join(valid),
+                 "-s", "/usr/bin/zsh", username])
+        else:
+            run(["useradd", "-m", "-s", "/usr/bin/zsh", username])
         run(["chpasswd"], input=f"{username}:{USER_PASSWORD}", text=True)
     else:
         log.info(f"User {username} already exists")
-        # Ensure user is in required groups
-        run(["usermod", "-aG", "wheel,networkmanager,kvm,libvirtd,plugdev,video,input", username])
+        # Ensure user is in required groups (only existing ones)
+        if valid:
+            run(["usermod", "-aG", ",".join(valid), username])
 
 
 def make_backup(source_dir: str, dry_run: bool = False) -> Optional[Path]:
