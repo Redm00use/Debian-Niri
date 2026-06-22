@@ -60,14 +60,17 @@ log = logging.getLogger("nixdots-debian")
 
 # ── Utility Functions ──────────────────────────────────────────────────────────
 
-def run(cmd: List[str], check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
+def run(cmd, check=True, capture=False, cwd=None):
     """Run a shell command with logging."""
     log.debug(f"$ {shlex.join(cmd)}")
     try:
+        kwargs = {}
         if capture:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=check)
-        else:
-            result = subprocess.run(cmd, check=check)
+            kwargs["capture_output"] = True
+            kwargs["text"] = True
+        if cwd:
+            kwargs["cwd"] = str(cwd)
+        result = subprocess.run(cmd, check=check, **kwargs)
         return result
     except subprocess.CalledProcessError as e:
         log.error(f"Command failed: {shlex.join(cmd)}")
@@ -117,11 +120,12 @@ def service_enable(service_name: str, system: bool = True, dry_run: bool = False
     prefix = "" if system else "--user"
     uid_arg = [] if system else ["-E"]
     if system:
-        run(["systemctl", "enable", service_name])
-        run(["systemctl", "start", service_name])
+        run(["systemctl", "enable", service_name], check=False)
+        run(["systemctl", "start", service_name], check=False)
     else:
-        run(["systemctl", "--user", "enable", service_name])
-        run(["systemctl", "--user", "start", service_name])
+        run(["systemctl", "--user", "enable", service_name], check=False)
+        run(["systemctl", "--user", "start", service_name], check=False)
+    log.info(f"  Enabled service: {service_name}")
 
 
 def write_file(path: Path, content: str, dry_run: bool = False) -> None:
@@ -370,6 +374,7 @@ SYSTEM_PACKAGES = {
     "libxkbcommon-x11": "libxkbcommon-x11-0",
     "libinput": "libinput10",
     "libseat1": "libseat1",
+    "thermald": "thermald",
 
     # Build tools (for source builds)
     "build-essential": "build-essential",
@@ -645,7 +650,7 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
     log.info("Installing Eww...")
     if not dry_run and not shutil.which("eww"):
         try:
-            run(["cargo", "install", "elkowar-eww"], check=False)
+            run(["cargo", "install", "eww"], check=False)
         except Exception as e:
             log.error(f"Failed to install Eww: {e}")
 
@@ -693,7 +698,15 @@ def stage_3_build_from_source(dry_run: bool = False) -> None:
 
     # pfetch-rs
     if not dry_run and not shutil.which("pfetch"):
-        run(["cargo", "install", "pfetch-rs"], check=False)
+        try:
+            # Install from git (not on crates.io)
+            run(["git", "clone", "--depth", "1",
+                 "https://github.com/dnmv/pfetch-rs.git",
+                 "/tmp/pfetch-rs"], check=False)
+            if Path("/tmp/pfetch-rs").exists():
+                run(["cargo", "install", "--path", "."], cwd="/tmp/pfetch-rs", check=False)
+        except Exception as e:
+            log.warning(f"Failed to install pfetch-rs: {e}")
 
 
 # ── Stage 4: User & Groups ────────────────────────────────────────────────────
