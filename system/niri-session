@@ -50,10 +50,8 @@ if command -v xwayland-satellite &>/dev/null; then
     xwayland-satellite &
 fi
 
-# ── Noctalia Shell ────────────────────────────────────────────────────────────
-if command -v noctalia-shell-patched &>/dev/null; then
-    noctalia-shell-patched &
-fi
+# Noctalia Shell is started by systemd user service (noctalia-shell.service)
+# Do NOT start it here - it would conflict with the service.
 
 # ── Start Niri ────────────────────────────────────────────────────────────────
 exec niri-session "$@"

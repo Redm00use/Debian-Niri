@@ -15,16 +15,35 @@
 set -euo pipefail
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-NOCTALIA_SOURCE="${NOCTALIA_SOURCE:-}"
+# WARNING: When deployed to ~/.local/bin, set NOCTALIA_PROJECT_ROOT to
+# the Debian migration project root, or set NOCTALIA_SOURCE directly.
+NOCTALIA_PROJECT_ROOT="${NOCTALIA_PROJECT_ROOT:-}"
 QUICKSHELL_BIN="${QUICKSHELL_BIN:-$(command -v quickshell 2>/dev/null || echo /usr/local/bin/quickshell)}"
-PATCH_DIR="$(dirname "$0")/../patches/noctalia"
-VENDOR_DIR="$(dirname "$0")/../vendor/noctalia/plugins"
 NOCTALIA_CONFIG_DIR="${HOME}/.config/noctalia"
 CACHE_DIR="/tmp/noctalia-shell-patched-${USER}"
 
+# Try to find project root relative to script location
+if [ -z "${NOCTALIA_PROJECT_ROOT}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    if [ -f "${SCRIPT_DIR}/../patches/noctalia/Bar.qml" ]; then
+        NOCTALIA_PROJECT_ROOT="${SCRIPT_DIR}/.."
+    elif [ -f "${SCRIPT_DIR}/../../patches/noctalia/Bar.qml" ]; then
+        NOCTALIA_PROJECT_ROOT="${SCRIPT_DIR}/../.."
+    elif [ -f "/home/kotlin/Debian/patches/noctalia/Bar.qml" ]; then
+        NOCTALIA_PROJECT_ROOT="/home/kotlin/Debian"
+    else
+        echo "WARNING: Cannot find project root. Set NOCTALIA_PROJECT_ROOT." >&2
+        echo "  Example: export NOCTALIA_PROJECT_ROOT=/home/kotlin/Debian" >&2
+        echo "  Or set:   export NOCTALIA_SOURCE=/path/to/noctalia-shell" >&2
+    fi
+fi
+
+NOCTALIA_SOURCE="${NOCTALIA_SOURCE:-}"
+PATCH_DIR="${NOCTALIA_PROJECT_ROOT}/patches/noctalia"
+VENDOR_DIR="${NOCTALIA_PROJECT_ROOT}/vendor/noctalia/plugins"
+
 # ── Determine Noctalia Source ─────────────────────────────────────────────────
 if [ -z "${NOCTALIA_SOURCE}" ]; then
-    # Try common locations
     for candidate in \
         "${HOME}/noctalia-shell" \
         "/usr/local/share/noctalia-shell" \
@@ -41,6 +60,7 @@ if [ -z "${NOCTALIA_SOURCE}" ] || [ ! -d "${NOCTALIA_SOURCE}" ]; then
     echo "ERROR: Cannot find Noctalia Shell source directory." >&2
     echo "Set NOCTALIA_SOURCE or clone it:" >&2
     echo "  git clone https://github.com/noctalia-dev/noctalia-shell.git" >&2
+    echo "  cd noctalia-shell && cmake -B build && cmake --build build && sudo cmake --install build" >&2
     echo "  export NOCTALIA_SOURCE=\$(pwd)/noctalia-shell" >&2
     exit 1
 fi
@@ -57,14 +77,11 @@ if [ ! -d "${CACHE_DIR}" ] || [ ! -f "${CACHE_DIR}/.patched" ]; then
     rm -rf "${CACHE_DIR}"
     mkdir -p "${CACHE_DIR}"
 
-    # Copy Noctalia source
     cp -r "${NOCTALIA_SOURCE}"/* "${CACHE_DIR}/"
     chmod -R u+w "${CACHE_DIR}"
 
     # Apply patches
-    echo "Applying patches from ${PATCH_DIR}..." >&2
     if [ -d "${PATCH_DIR}" ]; then
-        # Map patch filenames to their Noctalia source paths
         declare -A PATCH_MAP=(
             ["AllBackgrounds.qml"]="Modules/MainScreen/Backgrounds/AllBackgrounds.qml"
             ["Bar.qml"]="Modules/Bar/Bar.qml"
@@ -98,26 +115,20 @@ if [ ! -d "${CACHE_DIR}" ] || [ ! -f "${CACHE_DIR}/.patched" ]; then
                 -e "s/color: entry.isSelected ? Color.mOnHover : Color.mOnSurface/color: Color.mOnSurface/g" \
                 -e "s/color: gridEntryContainer.isSelected ? Color.mOnHover : Color.mOnSurface/color: Color.mOnSurface/g" \
                 "${launcher_core}"
-            echo "  Applied LauncherCore color substitutions" >&2
         fi
 
         # Apply PluginService auto-update patch
         plugin_service="${CACHE_DIR}/Services/Noctalia/PluginService.qml"
         if [ -f "${plugin_service}" ]; then
             sed -i "s/if (updateCount > 0) {/if (Settings.data.plugins.autoUpdate \&\& updateCount > 0) {/g" "${plugin_service}"
-            echo "  Applied PluginService auto-update patch" >&2
         fi
-    else
-        echo "  WARNING: Patch directory not found: ${PATCH_DIR}" >&2
     fi
 
     # Copy vendored plugins
     if [ -d "${VENDOR_DIR}" ] && [ -d "${NOCTALIA_CONFIG_DIR}/plugins" ]; then
-        echo "Copying vendored plugins..." >&2
         cp -r "${NOCTALIA_CONFIG_DIR}/plugins"/* "${CACHE_DIR}/Modules/Panels/Plugins/" 2>/dev/null || true
     fi
 
-    # Mark as patched
     date > "${CACHE_DIR}/.patched"
     echo "Patched config built successfully" >&2
 fi

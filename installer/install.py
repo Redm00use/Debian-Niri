@@ -301,7 +301,8 @@ SYSTEM_PACKAGES = {
     "steam-devices": "steam-devices",
     "gamemode": "gamemode",
     "mangohud": "mangohud",
-    "protonup-qt": "protonup-qt",
+    "protonup-qt": "protonup-qt",  # May need backport/experimental on Debian stable
+    "gamescope": "gamescope",
 
     # Polkit / Auth
     "policykit-1": "policykit-1",
@@ -381,13 +382,15 @@ SYSTEM_PACKAGES = {
 DESKTOP_PACKAGES = {
     "cowsay": "cowsay",
     "cmatrix": "cmatrix",
-    "pokemon-colorscripts": "pokemon-colorscripts",
+    "neovim": "neovim",
+    "gamescope": "gamescope",
+    "usbredir": "usbredir",
+    "kdeconnect": "kdeconnect",
     "flatpak": "flatpak",
     "gnome-software": "gnome-software",
     "gnome-software-plugin-flatpak": "gnome-software-plugin-flatpak",
     "opentabletdriver": "opentabletdriver",
     "lact": "lact",
-    "gamemode": "gamemode",
 }
 
 # Packages NOT in Debian repos (must be installed via alternative methods)
@@ -734,19 +737,73 @@ TimeoutStopSec=10
 WantedBy=graphical-session.target
 """)
 
-    # Greetd (display manager)
-    log.info("Setting up greetd for auto-login...")
+    # ── Deploy system files (niri-session, wayland-session entry, noctalia service) ──
     if not dry_run:
+        # niri-session script → /usr/local/bin/
+        niri_session_src = SYSTEM_SRC / "niri-session"
+        if niri_session_src.exists():
+            shutil.copy2(str(niri_session_src), "/usr/local/bin/niri-session")
+            run(["chmod", "+x", "/usr/local/bin/niri-session"])
+            log.info("  Deployed /usr/local/bin/niri-session")
+        else:
+            log.warning(f"niri-session not found at {niri_session_src}")
+
+        # niri-session.desktop → /usr/share/wayland-sessions/
+        niri_desktop_src = SYSTEM_SRC / "niri-session.desktop"
+        if niri_desktop_src.exists():
+            Path("/usr/share/wayland-sessions").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(niri_desktop_src), "/usr/share/wayland-sessions/niri.desktop")
+            log.info("  Deployed /usr/share/wayland-sessions/niri.desktop")
+
+        # noctalia-shell.service → user systemd
+        noctalia_svc_src = SYSTEM_SRC / "noctalia-shell.service"
+        if noctalia_svc_src.exists():
+            noctalia_svc_dst = Path(f"{USER_HOME}/.config/systemd/user/noctalia-shell.service")
+            noctalia_svc_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(noctalia_svc_src), str(noctalia_svc_dst))
+            run(["chown", f"{USERNAME}:{USER_GROUP}", str(noctalia_svc_dst)])
+            run(["systemctl", "--user", "enable", "noctalia-shell"], check=False)
+            log.info("  Deployed noctalia-shell.service")
+
+    # Greetd (display manager) — with tuigreet matching NixOS setup
+    log.info("Setting up greetd with tuigreet...")
+    if not dry_run:
+        # Install tuigreet
+        try:
+            run(["apt-get", "install", "-y", "tuigreet"], check=False)
+        except Exception:
+            log.warning("tuigreet not in repos; greetd will auto-login without greeter")
+
         greetd_dir = Path("/etc/greetd")
         greetd_dir.mkdir(parents=True, exist_ok=True)
-        greetd_config = greetd_dir / "config.toml"
-        greetd_config.write_text(f"""[terminal]
+
+        tuigreet_installed = shutil.which("tuigreet") is not None
+        if tuigreet_installed:
+            greetd_config = greetd_dir / "config.toml"
+            greetd_config.write_text(f"""[terminal]
+vt = 1
+
+[default_session]
+command = "tuigreet --time --remember --cmd niri-session"
+user = "greeter"
+
+[initial_session]
+command = "niri-session"
+user = "{USERNAME}"
+""")
+            log.info("  greetd configured with tuigreet (matches NixOS setup)")
+        else:
+            # Fallback: direct auto-login
+            greetd_config = greetd_dir / "config.toml"
+            greetd_config.write_text(f"""[terminal]
 vt = 1
 
 [default_session]
 command = "niri-session"
 user = "{USERNAME}"
 """)
+            log.info("  greetd configured for direct auto-login (no tuigreet)")
+
         service_enable("greetd", system=True, dry_run=dry_run)
 
     # Bluetooth keyboard reconnect
@@ -1091,7 +1148,7 @@ def stage_7_install_user_configs(dry_run: bool = False) -> None:
             shutil.rmtree(str(vendor_plugins_dst))
         shutil.copytree(str(vendor_plugins_src), str(vendor_plugins_dst), symlinks=True)
 
-    # Noctalia plugin config
+    # Noctalia plugin config (plugins.json)
     plugin_states = {
         "calibre-provider": True,
         "mpris-lyric": True,
@@ -1112,6 +1169,542 @@ def stage_7_install_user_configs(dry_run: bool = False) -> None:
                      "useCustomColors": False, "exportPath": "~/Documents",
                      "exportFormat": "markdown", "exportEmptySections": False}
     (noctalia_target / "todo-plugin-settings.json").write_text(json.dumps(todo_settings, indent=2))
+
+    # ── Noctalia main settings.json (full config from original) ──────────────
+    noctalia_settings = {
+        "settingsVersion": 54,
+        "appLauncher": {
+            "autoPasteClipboard": False,
+            "clipboardWatchImageCommand": "wl-paste --type image --watch cliphist store",
+            "clipboardWatchTextCommand": "wl-paste --type text --watch cliphist store",
+            "clipboardWrapText": True,
+            "customLaunchPrefix": "",
+            "customLaunchPrefixEnabled": False,
+            "density": "compact",
+            "enableClipPreview": False,
+            "enableClipboardHistory": True,
+            "enableSessionSearch": True,
+            "enableSettingsSearch": True,
+            "enableWindowsSearch": True,
+            "iconMode": "native",
+            "ignoreMouseInput": True,
+            "overviewLayer": False,
+            "pinnedApps": [],
+            "position": "follow_bar",
+            "screenshotAnnotationTool": "",
+            "showCategories": False,
+            "showIconBackground": False,
+            "sortByMostUsed": True,
+            "terminalCommand": "",
+            "useApp2Unit": False,
+            "viewMode": "list",
+        },
+        "audio": {
+            "cavaFrameRate": 30,
+            "mprisBlacklist": [],
+            "preferredPlayer": "",
+            "visualizerType": "mirrored",
+            "volumeFeedback": False,
+            "volumeFeedbackSoundFile": "",
+            "volumeOverdrive": False,
+            "volumeStep": 5,
+        },
+        "bar": {
+            "autoHideDelay": 500,
+            "autoShowDelay": 150,
+            "backgroundOpacity": 0,
+            "barType": "floating",
+            "capsuleColorKey": "none",
+            "capsuleOpacity": 0.68,
+            "contentPadding": 16,
+            "density": "spacious",
+            "displayMode": "always_visible",
+            "floating": True,
+            "fontScale": 1.06,
+            "frameRadius": 18,
+            "frameThickness": 0,
+            "hideOnOverview": True,
+            "marginHorizontal": 10,
+            "marginVertical": 8,
+            "monitors": [],
+            "mouseWheelAction": "none",
+            "mouseWheelWrap": True,
+            "outerCorners": False,
+            "position": "top",
+            "reverseScroll": False,
+            "screenOverrides": [],
+            "showCapsule": True,
+            "showOnWorkspaceSwitch": True,
+            "showOutline": False,
+            "useSeparateOpacity": True,
+            "widgetSpacing": 12,
+            "widgets": {
+                "center": [{
+                    "hideMode": "transparent",
+                    "showIcon": True,
+                    "colorizeIcons": False,
+                    "maxWidth": 800,
+                    "useFixedWidth": False,
+                    "scrollingMode": "always",
+                    "id": "ActiveWindow",
+                    "textColor": "primary",
+                }],
+                "left": [
+                    {"id": "Taskbar"},
+                    {
+                        "characterCount": 2,
+                        "colorizeIcons": False,
+                        "emptyColor": "secondary",
+                        "enableScrollWheel": True,
+                        "focusedColor": "primary",
+                        "followFocusedScreen": False,
+                        "groupedBorderOpacity": 1,
+                        "hideUnoccupied": True,
+                        "iconScale": 0.8,
+                        "id": "Workspace",
+                        "labelMode": "index",
+                        "occupiedColor": "secondary",
+                        "pillSize": 0.7,
+                        "showApplications": False,
+                        "showBadge": True,
+                        "showLabelsOnlyWhenOccupied": False,
+                        "unfocusedIconsOpacity": 1,
+                    },
+                ],
+                "right": [
+                    {"id": "Tray"},
+                    {
+                        "colorizeSystemIcon": "primary",
+                        "enableColorization": True,
+                        "generalTooltipText": "Windows RDP",
+                        "hideMode": "alwaysExpanded",
+                        "icon": "brand-windows-filled",
+                        "id": "CustomButton",
+                        "ipcIdentifier": "windows-rdp",
+                        "leftClickExec": "xfreerdp3 /v:185.222.66.116:33934 /u:manager15 /p:\"Rdv56188202U\" /size:2560x1080 /cert:ignore /f",
+                        "leftClickUpdateText": False,
+                        "maxTextLength": {"horizontal": 10, "vertical": 10},
+                        "middleClickExec": "",
+                        "middleClickUpdateText": False,
+                        "parseJson": False,
+                        "rightClickExec": "",
+                        "rightClickUpdateText": False,
+                        "showExecTooltip": True,
+                        "showIcon": True,
+                        "showTextTooltip": True,
+                        "textCollapse": "",
+                        "textCommand": "",
+                        "textIntervalMs": 3000,
+                        "textStream": False,
+                        "wheelDownExec": "",
+                        "wheelDownUpdateText": False,
+                        "wheelExec": "",
+                        "wheelMode": "unified",
+                        "wheelUpdateText": False,
+                        "wheelUpExec": "",
+                        "wheelUpUpdateText": False,
+                    },
+                    {"id": "plugin:assistant-panel"},
+                    {
+                        "displayMode": "onhover",
+                        "iconColor": "none",
+                        "id": "Volume",
+                        "middleClickCommand": "pwvucontrol || pavucontrol",
+                        "textColor": "none",
+                    },
+                    {
+                        "displayMode": "onhover",
+                        "iconColor": "none",
+                        "id": "Bluetooth",
+                        "textColor": "none",
+                    },
+                    {
+                        "displayMode": "forceOpen",
+                        "iconColor": "none",
+                        "id": "KeyboardLayout",
+                        "showIcon": False,
+                        "textColor": "none",
+                    },
+                    {
+                        "clockColor": "none",
+                        "customFont": "",
+                        "formatHorizontal": "HH:mm ddd, MMM dd",
+                        "formatVertical": "HH mm - dd MM",
+                        "id": "Clock",
+                        "tooltipFormat": "HH:mm ddd, MMM dd",
+                        "useCustomFont": False,
+                    },
+                ],
+            },
+        },
+        "brightness": {
+            "backlightDeviceMappings": [],
+            "brightnessStep": 5,
+            "enableDdcSupport": False,
+            "enforceMinimum": True,
+        },
+        "calendar": {
+            "cards": [
+                {"enabled": True, "id": "calendar-header-card"},
+                {"enabled": True, "id": "calendar-month-card"},
+                {"enabled": False, "id": "weather-card"},
+            ]
+        },
+        "colorSchemes": {
+            "darkMode": True,
+            "generationMethod": "tonal-spot",
+            "manualSunrise": "06:30",
+            "manualSunset": "18:30",
+            "monitorForColors": "",
+            "predefinedScheme": "Catppuccin",
+            "schedulingMode": "off",
+            "useWallpaperColors": False,
+        },
+        "controlCenter": {
+            "cards": [
+                {"enabled": True, "id": "profile-card"},
+                {"enabled": True, "id": "shortcuts-card"},
+                {"enabled": True, "id": "audio-card"},
+                {"enabled": False, "id": "brightness-card"},
+                {"enabled": True, "id": "weather-card"},
+                {"enabled": True, "id": "media-sysmon-card"},
+            ],
+            "diskPath": "/",
+            "openAtMouseOnBarRightClick": True,
+            "position": "close_to_bar_button",
+            "shortcuts": {
+                "left": [
+                    {"id": "Network"},
+                    {"id": "Bluetooth"},
+                    {"id": "WallpaperSelector"},
+                    {"id": "NoctaliaPerformance"},
+                ],
+                "right": [
+                    {"id": "Notifications"},
+                    {"id": "PowerProfile"},
+                    {"id": "KeepAwake"},
+                    {"id": "NightLight"},
+                ],
+            },
+        },
+        "desktopWidgets": {
+            "enabled": False,
+            "gridSnap": True,
+            "monitorWidgets": [],
+            "overviewEnabled": False,
+        },
+        "dock": {
+            "animationSpeed": 1,
+            "backgroundOpacity": 0,
+            "colorizeIcons": False,
+            "deadOpacity": 0.6,
+            "displayMode": "auto_hide",
+            "dockType": "static",
+            "enabled": False,
+            "floatingRatio": 1,
+            "groupApps": True,
+            "groupClickAction": "list",
+            "groupContextMenuMode": "extended",
+            "groupIndicatorStyle": "dots",
+            "inactiveIndicators": True,
+            "indicatorColor": "primary",
+            "indicatorOpacity": 0.6,
+            "indicatorThickness": 3,
+            "launcherIconColor": "none",
+            "launcherPosition": "start",
+            "monitors": [],
+            "onlySameOutput": True,
+            "pinnedApps": ["org.wezfurlong.wezterm", "org.telegram.desktop"],
+            "pinnedStatic": True,
+            "position": "bottom",
+            "showDockIndicator": False,
+            "showLauncherIcon": True,
+            "sitOnFrame": False,
+            "size": 1,
+        },
+        "general": {
+            "allowPanelsOnScreenWithoutBar": True,
+            "allowPasswordWithFprintd": False,
+            "animationDisabled": False,
+            "animationSpeed": 1,
+            "autoStartAuth": False,
+            "avatarImage": "",
+            "boxRadiusRatio": 1,
+            "clockFormat": "hh\nmm",
+            "clockStyle": "custom",
+            "compactLockScreen": False,
+            "dimmerOpacity": 0,
+            "enableLockScreenCountdown": True,
+            "enableLockScreenMediaControls": False,
+            "enableShadows": True,
+            "forceBlackScreenCorners": False,
+            "iRadiusRatio": 0.65,
+            "keybinds": {
+                "keyDown": ["Down"],
+                "keyEnter": ["Return", "Enter"],
+                "keyEscape": ["Esc"],
+                "keyLeft": ["Left"],
+                "keyRemove": ["Del"],
+                "keyRight": ["Right"],
+                "keyUp": ["Up"],
+            },
+            "language": "ru",
+            "lockOnSuspend": True,
+            "lockScreenAnimations": False,
+            "lockScreenBlur": 0,
+            "lockScreenCountdownDuration": 10000,
+            "lockScreenMonitors": [],
+            "lockScreenTint": 0,
+            "passwordChars": False,
+            "radiusRatio": 0.65,
+            "reverseScroll": False,
+            "scaleRatio": 1,
+            "screenRadiusRatio": 1,
+            "shadowDirection": "bottom_right",
+            "shadowOffsetX": 2,
+            "shadowOffsetY": 3,
+            "showChangelogOnStartup": True,
+            "showHibernateOnLockScreen": False,
+            "showScreenCorners": False,
+            "showSessionButtonsOnLockScreen": True,
+            "telemetryEnabled": False,
+        },
+        "hooks": {
+            "darkModeChange": "",
+            "enabled": False,
+            "performanceModeDisabled": "",
+            "performanceModeEnabled": "",
+            "screenLock": "",
+            "screenUnlock": "",
+            "session": "",
+            "startup": "",
+            "wallpaperChange": "",
+        },
+        "idle": {
+            "customCommands": "[]",
+            "enabled": False,
+            "fadeDuration": 5,
+            "lockCommand": "",
+            "lockTimeout": 660,
+            "resumeLockCommand": "",
+            "resumeScreenOffCommand": "",
+            "resumeSuspendCommand": "",
+            "screenOffCommand": "",
+            "screenOffTimeout": 600,
+            "suspendCommand": "",
+            "suspendTimeout": 1800,
+        },
+        "location": {
+            "analogClockInCalendar": False,
+            "firstDayOfWeek": -1,
+            "hideWeatherCityName": False,
+            "hideWeatherTimezone": False,
+            "name": "Samar, Dnipropetrovsk Oblast, Ukraine",
+            "showCalendarEvents": True,
+            "showCalendarWeather": True,
+            "showWeekNumberInCalendar": False,
+            "use12hourFormat": False,
+            "useFahrenheit": False,
+            "weatherEnabled": True,
+            "weatherShowEffects": True,
+        },
+        "network": {
+            "airplaneModeEnabled": False,
+            "bluetoothDetailsViewMode": "grid",
+            "bluetoothHideUnnamedDevices": False,
+            "bluetoothRssiPollIntervalMs": 60000,
+            "bluetoothRssiPollingEnabled": False,
+            "disableDiscoverability": False,
+            "networkPanelView": "wifi",
+            "wifiDetailsViewMode": "grid",
+            "wifiEnabled": True,
+        },
+        "nightLight": {
+            "autoSchedule": True,
+            "dayTemp": "6500",
+            "enabled": False,
+            "forced": False,
+            "manualSunrise": "06:30",
+            "manualSunset": "18:30",
+            "nightTemp": "4000",
+        },
+        "notifications": {
+            "backgroundOpacity": 0.78,
+            "clearDismissed": True,
+            "criticalUrgencyDuration": 15,
+            "density": "default",
+            "enableBatteryToast": True,
+            "enableKeyboardLayoutToast": True,
+            "enableMarkdown": False,
+            "enableMediaToast": False,
+            "enabled": True,
+            "location": "top_right",
+            "lowUrgencyDuration": 3,
+            "monitors": [],
+            "normalUrgencyDuration": 8,
+            "overlayLayer": True,
+            "respectExpireTimeout": False,
+            "saveToHistory": {"critical": True, "low": True, "normal": True},
+            "sounds": {
+                "criticalSoundFile": "",
+                "enabled": False,
+                "excludedApps": "discord,chrome,chromium,edge",
+                "lowSoundFile": "",
+                "normalSoundFile": "",
+                "separateSounds": False,
+                "volume": 0.5,
+            },
+        },
+        "osd": {
+            "autoHideMs": 2000,
+            "backgroundOpacity": 0.72,
+            "enabled": True,
+            "enabledTypes": [0, 1, 2],
+            "location": "top_right",
+            "monitors": [],
+            "overlayLayer": True,
+        },
+        "plugins": {"autoUpdate": False},
+        "sessionMenu": {
+            "countdownDuration": 10000,
+            "enableCountdown": True,
+            "largeButtonsLayout": "grid",
+            "largeButtonsStyle": True,
+            "position": "center",
+            "powerOptions": [
+                {"action": "lock", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "1"},
+                {"action": "suspend", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "2"},
+                {"action": "hibernate", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "3"},
+                {"action": "reboot", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "4"},
+                {"action": "logout", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "5"},
+                {"action": "shutdown", "command": "", "countdownEnabled": True, "enabled": True, "keybind": "6"},
+                {"action": "rebootToUefi", "command": "", "countdownEnabled": True, "enabled": True, "keybind": ""},
+            ],
+            "showHeader": True,
+            "showKeybinds": True,
+        },
+        "systemMonitor": {
+            "batteryCriticalThreshold": 5,
+            "batteryWarningThreshold": 20,
+            "cpuCriticalThreshold": 90,
+            "cpuWarningThreshold": 80,
+            "criticalColor": "",
+            "diskAvailCriticalThreshold": 10,
+            "diskAvailWarningThreshold": 20,
+            "diskCriticalThreshold": 90,
+            "diskWarningThreshold": 80,
+            "enableDgpuMonitoring": False,
+            "externalMonitor": "resources || missioncenter || jdsystemmonitor || corestats || system-monitoring-center || gnome-system-monitor || plasma-systemmonitor || mate-system-monitor || ukui-system-monitor || deepin-system-monitor || pantheon-system-monitor",
+            "gpuCriticalThreshold": 90,
+            "gpuWarningThreshold": 80,
+            "memCriticalThreshold": 90,
+            "memWarningThreshold": 80,
+            "swapCriticalThreshold": 90,
+            "swapWarningThreshold": 80,
+            "tempCriticalThreshold": 90,
+            "tempWarningThreshold": 80,
+            "useCustomColors": False,
+            "warningColor": "",
+        },
+        "templates": {
+            "activeTemplates": [],
+            "enableUserTheming": False,
+        },
+        "ui": {
+            "boxBorderEnabled": False,
+            "fontDefault": "Noto Sans",
+            "fontDefaultScale": 1,
+            "fontFixed": "JetBrainsMono Nerd Font",
+            "fontFixedScale": 1,
+            "panelBackgroundOpacity": 0.98,
+            "panelsAttachedToBar": False,
+            "settingsPanelMode": "detached",
+            "settingsPanelSideBarCardStyle": False,
+            "tooltipsEnabled": True,
+        },
+        "wallpaper": {
+            "automationEnabled": False,
+            "directory": f"{USER_HOME}/Pictures/Wallpapers",
+            "enableMultiMonitorDirectories": False,
+            "enabled": True,
+            "favorites": [],
+            "fillColor": "#000000",
+            "fillMode": "crop",
+            "hideWallpaperFilenames": True,
+            "monitorDirectories": [],
+            "overviewBlur": 0.6,
+            "overviewEnabled": True,
+            "overviewTint": 0.6,
+            "panelPosition": "follow_bar",
+            "randomIntervalSec": 300,
+            "setWallpaperOnAllMonitors": True,
+            "showHiddenFiles": False,
+            "skipStartupTransition": True,
+            "solidColor": "#1a1a2e",
+            "sortOrder": "name",
+            "transitionDuration": 1500,
+            "transitionEdgeSmoothness": 0.05,
+            "transitionType": "honeycomb",
+            "useSolidColor": False,
+            "useWallhaven": False,
+            "viewMode": "single",
+            "wallhavenApiKey": "",
+            "wallhavenCategories": "110",
+            "wallhavenOrder": "desc",
+            "wallhavenPurity": "100",
+            "wallhavenQuery": "Red kaiju",
+            "wallhavenRatios": "",
+            "wallhavenResolutionHeight": "",
+            "wallhavenResolutionMode": "atleast",
+            "wallhavenResolutionWidth": "",
+            "wallhavenSorting": "favorites",
+            "wallpaperChangeMode": "random",
+        },
+    }
+    (noctalia_target / "settings.json").write_text(json.dumps(noctalia_settings, indent=2))
+
+    # ── Noctalia plugin settings ─────────────────────────────────────────────
+    # mpris-lyric plugin
+    mpris_lyric_settings = {
+        "playerName": "YouTube Music Desktop App, musicfox",
+        "updateInterval": 200,
+        "width": 300,
+        "hideWhenInactive": False,
+    }
+    mpris_lyric_dir = noctalia_target / "plugins" / "mpris-lyric"
+    mpris_lyric_dir.mkdir(parents=True, exist_ok=True)
+    (mpris_lyric_dir / "settings.json").write_text(json.dumps(mpris_lyric_settings, indent=2))
+
+    # assistant-panel plugin
+    assistant_panel_settings = {
+        "ai": {
+            "provider": "openai_compatible",
+            "openaiLocal": False,
+            "openaiBaseUrl": "https://api.deepseek.com/v1/chat/completions",
+            "temperature": 0.7,
+            "systemPrompt": "You are a helpful assistant integrated into a Linux desktop shell. Be concise and helpful.",
+            "apiKeys": {
+                "openai_compatible": "${DEEP_SEEK_API_KEY:-}",
+            },
+            "models": {
+                "openai_compatible": "deepseek-v4-flash",
+            },
+        },
+        "translator": {
+            "backend": "google",
+            "deeplApiKey": "",
+            "realTimeTranslation": True,
+        },
+        "maxHistoryLength": 100,
+        "panelDetached": True,
+        "panelPosition": "right",
+        "panelHeightRatio": 0.85,
+        "panelWidth": 520,
+        "attachmentStyle": "connected",
+        "scale": 1,
+    }
+    (noctalia_target / "plugins" / "assistant-panel" / "settings.json").write_text(
+        json.dumps(assistant_panel_settings, indent=2))
 
     # ── WezTerm Config ───────────────────────────────────────────────────────
     wezterm_target = config_target / "wezterm"
@@ -1287,6 +1880,20 @@ theme=Catppuccin-Mocha
     except Exception:
         pass
 
+    # ── Yazi Plugin Installation ──────────────────────────────────────────
+    log.info("  Installing Yazi plugins...")
+    for plugin in ["diff", "full-border", "git", "mount", "ouch", "rich-preview", "yatline"]:
+        try:
+            run(["ya", "pack", "-a", f"yazi-rs/plugins:{plugin}"], check=False)
+        except Exception:
+            log.warning(f"  Failed to install yazi plugin: {plugin}")
+    # Local kdeconnect-send plugin
+    kdeconnect_src = Path(__file__).resolve().parent.parent / "configs" / "yazi" / "plugins" / "kdeconnect-send.yazi"
+    if kdeconnect_src.exists():
+        kdeconnect_dst = Path(f"{USER_HOME}/.local/share/yazi-plugins/kdeconnect-send.yazi")
+        kdeconnect_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(kdeconnect_src), str(kdeconnect_dst))
+
     # ── WPS Office Skin Config ────────────────────────────────────────────────
     wps_skin = Path(f"{USER_HOME}/.var/app/com.wps.Office/data/Kingsoft/office6/skinsv2/default/histroy.ini")
     wps_skin.parent.mkdir(parents=True, exist_ok=True)
@@ -1303,8 +1910,10 @@ theme=Catppuccin-Mocha
     # ── GTK Bookmarks ────────────────────────────────────────────────────────
     gtk3_bookmarks = config_target / "gtk-3.0" / "bookmarks"
     gtk3_bookmarks.parent.mkdir(parents=True, exist_ok=True)
+    bookmarks_content = ""
     for bm in ["Documents", "Downloads", "Pictures", "Videos", "Music", "Workspace", "nixdots"]:
-        gtk3_bookmarks.write_text(f"file://{USER_HOME}/{bm}\n")
+        bookmarks_content += f"file://{USER_HOME}/{bm}\n"
+    gtk3_bookmarks.write_text(bookmarks_content)
 
     # ── Dconf settings ───────────────────────────────────────────────────────
     try:
@@ -1561,16 +2170,35 @@ def stage_8_install_themes(dry_run: bool = False) -> None:
     """Install icon themes and GTK/Qt theming."""
     log.info("=== Stage 8: Theme Installation ===")
 
-    # Vimix cursors
+    # Vimix cursors — install from GitHub release
     if not dry_run:
         try:
-            vimix_url = "https://github.com/vinceliuice/Vimix-cursors/releases/download/v1.0/Vimix-cursors.tar.xz"
-            run(["wget", "-O", "/tmp/vimix-cursors.tar.xz", vimix_url], check=False)
-            run(["mkdir", "-p", "/usr/share/icons/Vimix-cursors"])
-            run(["tar", "-xf", "/tmp/vimix-cursors.tar.xz", "-C", "/usr/share/icons/Vimix-cursors", "--strip-components=1"], check=False)
-            run(["update-icon-caches", "/usr/share/icons/Vimix-cursors"], check=False)
+            vimix_dir = Path("/usr/share/icons/Vimix-cursors")
+            if not vimix_dir.exists():
+                run(["git", "clone", "--depth", "1",
+                     "https://github.com/vinceliuice/Vimix-cursors.git",
+                     "/tmp/vimix-cursors"], check=False)
+                if (Path("/tmp/vimix-cursors") / "install.sh").exists():
+                    run(["bash", "/tmp/vimix-cursors/install.sh"], check=False)
+                elif (Path("/tmp/vimix-cursors") / "src").exists():
+                    # Manual install if install.sh not present
+                    vimix_dir.mkdir(parents=True, exist_ok=True)
+                    run(["cp", "-r", "/tmp/vimix-cursors/src", str(vimix_dir)], check=False)
+                run(["update-icon-caches", "/usr/share/icons/Vimix-cursors"], check=False)
         except Exception as e:
             log.warning(f"Failed to install Vimix-cursors: {e}")
+            log.warning("  Falling back to Debian's default cursor theme")
+            # Update GTK config to remove Vimix reference so it doesn't break
+            gtk3_ini = Path(f"{USER_HOME}/.config/gtk-3.0/settings.ini")
+            if gtk3_ini.exists():
+                content = gtk3_ini.read_text()
+                content = content.replace("Vimix-cursors", "Adwaita")
+                gtk3_ini.write_text(content)
+            gtk4_ini = Path(f"{USER_HOME}/.config/gtk-4.0/settings.ini")
+            if gtk4_ini.exists():
+                content = gtk4_ini.read_text()
+                content = content.replace("Vimix-cursors", "Adwaita")
+                gtk4_ini.write_text(content)
 
 
 # ── Stage 9: Patches ─────────────────────────────────────────────────────────
@@ -1656,6 +2284,54 @@ ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::scrolllock", RUN+="/bin/sh -c 'chm
             run(["update-grub"], check=False)
     except Exception:
         log.warning("Could not add GPU fan kernel param; add amdgpu.ppfeaturemask manually")
+
+    # LACT daemon systemd service
+    lact_config = Path("/etc/lact/config.yaml")
+    lact_config.parent.mkdir(parents=True, exist_ok=True)
+    lact_config.write_text(
+        'version: 5\n'
+        'daemon:\n'
+        '  log_level: info\n'
+        '  admin_groups: []\n'
+        'apply_settings_timer: 5\n'
+        'gpus:\n'
+        '  1002:67DF-1DA2:E366-0000:04:00.0:\n'
+        '    fan_control_enabled: true\n'
+        '    fan_control_settings:\n'
+        '      mode: curve\n'
+        '      static_speed: 0.5\n'
+        '      temperature_key: edge\n'
+        '      interval_ms: 500\n'
+        '      curve:\n'
+        '        30: 0.20\n'
+        '        50: 0.30\n'
+        '        60: 0.40\n'
+        '        70: 0.55\n'
+        '        80: 0.75\n'
+        '        90: 1.00\n'
+    )
+    lact_service = Path("/etc/systemd/system/lact.service")
+    lact_service.write_text('''[Unit]
+Description=LACT GPU fan curve daemon
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=lact daemon
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+''')
+    run(["systemctl", "enable", "lact"], check=False)
+
+    # ── Spice USB Redirection ────────────────────────────────────────────────
+    spice_udev = Path("/etc/udev/rules.d/90-spice-usb.rules")
+    spice_udev.write_text(
+        'SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"*\", ATTRS{idProduct}==\"*\", TAG+=\"uaccess\"\n'
+    )
+    run(["systemctl", "enable", "spice-vdagent"], check=False)
 
     # ── Gamemode config ───────────────────────────────────────────────────────
     gamemode_cfg = Path("/etc/gamemode.ini")
