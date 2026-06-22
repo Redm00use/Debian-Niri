@@ -82,13 +82,25 @@ def run(cmd: List[str], check: bool = True, capture: bool = False) -> subprocess
 
 
 def apt_install(packages: List[str], dry_run: bool = False) -> None:
-    """Install Debian packages via apt."""
+    """Install Debian packages via apt, skipping unavailable ones."""
     if not packages:
         return
-    pkg_list = " ".join(packages)
-    log.info(f"Installing {len(packages)} packages: {pkg_list[:200]}...")
+    # Filter: only install packages that have a candidate in configured repos
+    available = []
+    skipped = []
+    for pkg in packages:
+        result = run(["apt-cache", "policy", pkg], check=False, capture=True)
+        if result.returncode == 0 and "Candidate: (none)" not in result.stdout:
+            available.append(pkg)
+        else:
+            skipped.append(pkg)
+    if skipped:
+        log.warning(f"Skipping {len(skipped)} unavailable packages: {', '.join(skipped)}")
+    if not available:
+        return
+    log.info(f"Installing {len(available)} packages: {' '.join(available[:5])}...")
     if not dry_run:
-        run(["apt-get", "install", "-y", "--no-install-recommends"] + packages)
+        run(["apt-get", "install", "-y", "--no-install-recommends"] + available)
 
 
 def is_package_installed(pkg: str) -> bool:
@@ -373,13 +385,11 @@ DESKTOP_PACKAGES = {
     "cowsay": "cowsay",
     "cmatrix": "cmatrix",
     "neovim": "neovim",
-    "usbredir": "usbredir",
+    "usbredir": "usbredirect",
     "kdeconnect": "kdeconnect",
     "flatpak": "flatpak",
     "gnome-software": "gnome-software",
     "gnome-software-plugin-flatpak": "gnome-software-plugin-flatpak",
-    "opentabletdriver": "opentabletdriver",
-    "lact": "lact",
 }
 
 # Packages NOT in Debian repos (must be installed via alternative methods)
@@ -2274,7 +2284,10 @@ ACTION=="add", SUBSYSTEM=="leds", KERNEL=="*::scrolllock", RUN+="/bin/sh -c 'chm
             log.warning("Failed to install nbfc-linux; skip")
 
     # ── GPU Fan Control (LACT) ───────────────────────────────────────────────
-    run(["apt-get", "install", "-y", "lact"], check=False)
+    apt_install(["lact"], dry_run)
+    lact_found = is_package_installed("lact")
+    if not lact_found:
+        log.warning("lact not found in repos; skipping GPU fan control setup")
     kernel_param = "amdgpu.ppfeaturemask=0xfffd7fff"
     current_params = ""
     try:
