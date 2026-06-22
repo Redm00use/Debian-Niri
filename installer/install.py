@@ -22,8 +22,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -383,7 +381,6 @@ DESKTOP_PACKAGES = {
     "cowsay": "cowsay",
     "cmatrix": "cmatrix",
     "neovim": "neovim",
-    "gamescope": "gamescope",
     "usbredir": "usbredir",
     "kdeconnect": "kdeconnect",
     "flatpak": "flatpak",
